@@ -1,0 +1,1355 @@
+openapi: "3.1.0"
+
+info:
+  title: TurnoShift API — Contrato parcial I1
+  version: "0.1.0-i1"
+  description: |
+    Contrato HTTP del MVP de TurnoShift.
+
+    **Estado:** contrato parcial de I1. Diseño consolidado; implementación pendiente.
+    Este archivo no demuestra que los endpoints estén implementados, probados ni desplegados.
+
+    **Alcance de este contrato (I1 — Acceso seguro):**
+    - Token CSRF y estado de sesión.
+    - Inicio y cierre de sesión empresarial.
+    - Incorporación de organización + sede + primer administrador, ejecutada por el operador
+      de plataforma mediante herramienta restringida (ver nota sobre mecanismo del operador).
+    - Emisión del enlace inicial de contraseña para el primer administrador, integrada con HU-01.
+    - Establecimiento de contraseña mediante enlace e inspección previa.
+    - Endpoint de salud del backend (verificado, fuera del prefijo `/api/v1`).
+    - Respuestas de error transversales.
+
+    **Pendiente de decisión — Mecanismo del operador (PROP-OP-01):**
+    Las notas de planificación especifican que el alta y la suspensión de organizaciones se
+    realizan mediante herramientas restringidas, separadas de la navegación ordinaria del cliente
+    (Nota 10, §17.1). `platform_operators` es una entidad distinta de `app_users` y no implica
+    construir otro portal público (Nota 07, §6.1).
+    Este contrato propone rutas bajo `/operator/*` para describir el comportamiento esperado,
+    pendientes de aprobación del mecanismo de autenticación del operador.
+    Ver `docs/api/README.md` §Mecanismo del operador.
+
+    **Fuera de este contrato parcial (I1):**
+    Los siguientes endpoints se definen en I1 pero no se incluyen aquí por estar fuera del
+    subconjunto de acceso inicial:
+    - `POST /auth/change-password` (HU-04.2 — gestión posterior autenticada).
+    - Administración de usuarios (`GET /users`, `POST /users`, `PATCH /users/{id}`, etc.).
+    - Recuperación de contraseña posterior a primera configuración (HU-04.2).
+
+    **Fuera del incremento I1 (I2 y posteriores):**
+    RF-002 a RF-003, RF-006 a RF-018, sede, puestos, colaboradores, indisponibilidades,
+    planificación, intercambios, reportes y avisos.
+
+    **Convenciones:**
+    - Prefijo base de API empresarial: `/api/v1`.
+    - Endpoint de salud: `/api/health` (sin prefijo `/v1`; puerto 8081).
+    - Formato: `application/json` / `application/problem+json`.
+    - Propiedades: inglés, `camelCase`.
+    - Mensajes de error: español.
+    - Identificadores de negocio: UUID v4 representados como cadenas opacas.
+    - Autenticación empresarial: cookie de sesión (`HttpOnly`, `Secure` en producción,
+      `SameSite=Lax`). El token de sesión **no** viaja en JSON ni en `Authorization`.
+    - La organización se deriva **exclusivamente** de la sesión en el servidor;
+      no se acepta `organizationId` enviado por el cliente para autorizar operaciones.
+    - CSRF: cabecera `X-CSRF-TOKEN` obligatoria para todas las escrituras.
+    - Idempotencia: cabecera `Idempotency-Key` como parámetro obligatorio en comandos de negocio
+      (no es un mecanismo de autenticación).
+
+  contact:
+    name: TurnoShift — equipo de desarrollo
+  license:
+    name: Privado
+    identifier: LicenseRef-Privado
+
+servers:
+  - url: /api/v1
+    description: Prefijo de API empresarial (backend puerto 8081)
+  - url: /
+    description: Raíz del backend — usado solo por el endpoint de salud
+
+# ---------------------------------------------------------------------------
+# Tags
+# ---------------------------------------------------------------------------
+tags:
+  - name: infrastructure
+    description: Endpoints de infraestructura (salud, CSRF).
+  - name: session
+    description: Inicio, cierre de sesión y estado de sesión empresarial.
+  - name: operator
+    description: |
+      Operaciones del operador de plataforma mediante herramienta restringida.
+      Pendiente de decisión sobre mecanismo de autenticación (PROP-OP-01).
+  - name: password-setup
+    description: Configuración inicial de contraseña mediante enlace de un solo uso.
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+paths:
+
+  # -- HEALTH ----------------------------------------------------------------
+  # Ruta real: /api/health (no bajo /api/v1)
+  # Verificada en ejecución: HTTP 200 {"service":"turnoshift-backend","status":"UP"}
+  /api/health:
+    servers:
+      - url: /
+        description: Raíz del backend
+    get:
+      operationId: getHealth
+      summary: Estado del servicio backend
+      description: |
+        Endpoint de salud del backend. No requiere autenticación.
+        Ruta real: `http://localhost:8081/api/health`.
+        **Verificado en ejecución:** responde HTTP 200 con `{"service":"turnoshift-backend","status":"UP"}`.
+        Esta ruta no forma parte del prefijo `/api/v1`.
+      tags: [infrastructure]
+      security: []
+      responses:
+        "200":
+          description: Servicio operativo.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [service, status]
+                properties:
+                  service:
+                    type: string
+                    example: "turnoshift-backend"
+                  status:
+                    type: string
+                    example: "UP"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+
+  # -- CSRF ------------------------------------------------------------------
+  /auth/csrf:
+    get:
+      operationId: getCsrfToken
+      summary: Obtener token CSRF
+      description: |
+        Devuelve un token CSRF activo que debe adjuntarse en todas las solicitudes
+        de escritura posteriores mediante la cabecera `X-CSRF-TOKEN`.
+
+        Obtener un nuevo token tras iniciar sesión, cerrar sesión o cuando el token
+        vigente sea inválido.
+
+        No requiere sesión activa. Sesiones anónimas para CSRF son válidas;
+        no representan usuarios empresariales autenticados (Nota 07, §10.1).
+      tags: [infrastructure]
+      security: []
+      responses:
+        "200":
+          description: Token CSRF generado.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CsrfTokenResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+
+  # -- SESSION STATE ---------------------------------------------------------
+  /auth/session:
+    get:
+      operationId: getSessionState
+      summary: Consultar identidad y contexto de la sesión activa
+      description: |
+        Devuelve el usuario y la organización asociados a la sesión en curso.
+
+        Si no existe sesión activa devuelve `401 SESSION_REQUIRED`.
+        Usar tras cargar la aplicación para revalidar el estado.
+
+        Este endpoint **no** crea ni renueva una sesión.
+        Usar ante respuesta incierta de `POST /auth/login`.
+      tags: [session]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Sesión activa; identidad y contexto devueltos.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/SessionRequired"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  # -- LOGIN -----------------------------------------------------------------
+  /auth/login:
+    post:
+      operationId: login
+      summary: Iniciar sesión
+      description: |
+        Verifica las credenciales del usuario y, si son válidas, establece una sesión
+        en el servidor. La credencial de sesión se entrega mediante cookie; no aparece
+        en el cuerpo de la respuesta.
+
+        **Condiciones de rechazo:**
+        - Credenciales incorrectas → `401 AUTHENTICATION_FAILED`.
+        - Cuenta sin contraseña configurada → `401 AUTHENTICATION_FAILED`
+          (no se revela si la cuenta existe ni si tiene contraseña pendiente).
+        - Cuenta inactiva → `401 AUTHENTICATION_FAILED`.
+        - Organización suspendida → `403 ACCESS_DENIED`.
+        - CSRF inválido → `403 CSRF_INVALID`.
+
+        Los errores de acceso no revelan contraseñas ni detalles innecesarios.
+
+        **Respuesta incierta:** consultar `GET /auth/session` antes de reintentar.
+
+        **CSRF:** requiere `X-CSRF-TOKEN` + sesión anónima activa.
+        **Idempotencia:** las operaciones de credenciales no utilizan `api_operations`
+        (Nota 10, §4.4, §7.5).
+      tags: [session]
+      security:
+        - csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: |
+            Sesión iniciada. La cookie de sesión se establece en la respuesta.
+            El frontend **no** debe almacenar la credencial en `localStorage`.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+            Set-Cookie:
+              schema:
+                type: string
+                example: "TSESSIONID=<opaque>; HttpOnly; SameSite=Lax; Path=/"
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          description: |
+            `401 AUTHENTICATION_FAILED` — Credenciales incorrectas, cuenta inactiva
+            o cuenta sin contraseña configurada.
+            El mensaje no revela cuál de las condiciones aplica.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              example:
+                type: "/problems/authentication-failed"
+                title: "Autenticación fallida"
+                status: 401
+                detail: "Las credenciales son incorrectas o la cuenta no puede iniciar sesión."
+                code: "AUTHENTICATION_FAILED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+        "403":
+          $ref: "#/components/responses/AccessDeniedOrCsrf"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  # -- LOGOUT ----------------------------------------------------------------
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: Cerrar sesión
+      description: |
+        Invalida la sesión activa en el servidor y limpia la cookie.
+
+        Si no existe sesión activa devuelve `401 SESSION_REQUIRED`.
+
+        **Respuesta incierta:** comprobar `GET /auth/session` antes de continuar.
+
+        Después del cierre de sesión obtener un nuevo token CSRF.
+
+        **CSRF + sesión:** requiere tanto cookie de sesión activa como `X-CSRF-TOKEN` válido.
+      tags: [session]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Cuerpo vacío. El servidor no acepta campos adicionales.
+              maxProperties: 0
+      responses:
+        "204":
+          description: Sesión cerrada correctamente. Sin cuerpo de respuesta.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+        "401":
+          $ref: "#/components/responses/SessionRequired"
+        "403":
+          $ref: "#/components/responses/AccessDeniedOrCsrf"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  # -- OPERATOR: ONBOARDING --------------------------------------------------
+  # PROP-OP-01 — Pendiente de aprobación del mecanismo de autenticación del operador.
+  # El operador usa herramienta restringida, separada de la aplicación cliente.
+  # Estas rutas describen el comportamiento esperado; el mecanismo de auth no está
+  # finalizado. Ver docs/api/README.md §Mecanismo del operador.
+  /operator/setup/organizations:
+    post:
+      operationId: incorporateOrganization
+      summary: "[OPERADOR] Incorporar una organización con su sede y primer administrador"
+      description: |
+        Registra una nueva organización, su sede inicial y la cuenta del primer
+        administrador en una única operación atómica.
+
+        **Actor:** operador de TurnoShift autenticado mediante herramienta restringida
+        de plataforma. No es un endpoint público ni del cliente empresarial.
+        El operador no pertenece a una organización cliente (`platform_operators`
+        es distinto de `app_users`; Nota 07, §6.1 y §6.3).
+
+        **Comportamiento:**
+        - El alta no deja datos parciales ante un fallo transaccional.
+        - La organización no queda habilitada para publicar hasta completar la
+          configuración operativa requerida (puestos, colaboradores, política).
+        - La cuenta del administrador se crea sin contraseña.
+        - No se entregan contraseñas predeterminadas compartidas.
+        - La organización se identifica internamente; el operador no envía un
+          `organizationId` propio para el nuevo inquilino.
+        - Se registra la intervención del operador en auditoría con
+          `actor_type = PLATFORM_OPERATOR` (Nota 07, §9.1).
+
+        **Idempotencia del alta antes de que exista la organización:**
+        La clave de idempotencia está delimitada por la identidad del operador
+        y el UUID de intención, no por `organization_id` (que todavía no existe).
+        La tabla `api_operations` registra `actor_operator_id` como actor en lugar
+        de `actor_user_id` para este comando.
+
+        **Siguiente paso obligatorio:** emitir el enlace inicial del administrador
+        mediante `POST /operator/setup/organizations/{id}/initial-access-link`
+        antes de entregar el acceso.
+
+        **PROP-OP-01:** El mecanismo de autenticación del operador (sesión propia,
+        API key restringida u otro) no está finalizado. Este endpoint está marcado
+        como pendiente de revisión. Ver README §Mecanismo del operador.
+
+        **CSRF:** requiere `X-CSRF-TOKEN` (válido también para la herramienta del operador).
+        **Idempotencia:** requiere cabecera `Idempotency-Key` (UUID de la intención).
+      tags: [operator]
+      security:
+        - operatorSession: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncorporateOrganizationRequest"
+            examples:
+              cafedemo:
+                summary: "Ejemplo: Café Demo"
+                value:
+                  organization:
+                    code: "CAFE-DEMO"
+                    displayName: "Café Demo S.A."
+                    timeZone: "America/Lima"
+                  site:
+                    displayName: "Sede Central Lima"
+                  firstAdmin:
+                    email: "admin@cafedemo.example"
+                    displayName: "Ana García"
+      responses:
+        "201":
+          description: |
+            Organización, sede y cuenta de administrador creadas correctamente.
+            El administrador todavía no tiene contraseña configurada.
+            Emitir el enlace inicial de inmediato con el endpoint siguiente.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+            Location:
+              schema:
+                type: string
+                format: uri
+                example: "http://localhost:8081/api/v1/organizations/6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/Idempotency-Replayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncorporateOrganizationResponse"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/SessionRequired"
+        "403":
+          $ref: "#/components/responses/AccessDeniedOrCsrf"
+        "409":
+          description: |
+            Conflicto. Causas posibles:
+            - `IDEMPOTENCY_KEY_REUSED`: la clave fue utilizada con contenido diferente.
+            - `ORGANIZATION_CODE_CONFLICT`: el código de organización ya existe.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              examples:
+                idempotencyReused:
+                  summary: Clave reutilizada con contenido diferente
+                  value:
+                    type: "/problems/idempotency-key-reused"
+                    title: "Clave de idempotencia reutilizada"
+                    status: 409
+                    detail: "La clave de idempotencia fue usada previamente con un contenido diferente."
+                    code: "IDEMPOTENCY_KEY_REUSED"
+                    requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                    errors: []
+                codeConflict:
+                  summary: Código de organización ya existe
+                  value:
+                    type: "/problems/organization-code-conflict"
+                    title: "Código de organización en uso"
+                    status: 409
+                    detail: "El código 'CAFE-DEMO' ya está asignado a otra organización."
+                    code: "ORGANIZATION_CODE_CONFLICT"
+                    requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                    errors: []
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  # -- OPERATOR: INITIAL ACCESS LINK (HU-04.1 integrado con HU-01) -----------
+  /operator/setup/organizations/{organizationId}/initial-access-link:
+    post:
+      operationId: emitInitialAccessLink
+      summary: "[OPERADOR] Emitir enlace inicial de contraseña para el primer administrador"
+      description: |
+        Emite el enlace de configuración inicial de contraseña para el primer
+        administrador de la organización recién incorporada.
+
+        **Integración con HU-01:** Esta acción es parte necesaria del flujo de
+        incorporación (HU-04.1 integrado con HU-01). No puede aplazarse a I2,
+        porque sin ella el administrador no puede acceder al sistema.
+
+        **Separación de responsabilidades:** Crear la cuenta (`POST /operator/setup/organizations`)
+        y emitir el enlace son acciones diferenciadas (HU-04.1, criterio de aceptación).
+
+        **El secreto solo se entrega en la respuesta de este endpoint** al operador
+        autorizado. No se almacena en auditoría, logs ni resultados de idempotencia.
+        La respuesta debe usar `Cache-Control: no-store`.
+
+        **Propósito:** `INITIAL_SETUP`. Solo aplicable mientras el administrador
+        no tenga contraseña configurada.
+
+        **Vencimiento:** propuesto en 30 minutos desde la emisión (pendiente DEC-08).
+
+        **Revocación:** emitir un nuevo enlace revoca el anterior. El enlace anterior
+        queda inutilizable aunque no haya vencido.
+
+        **Respuesta incierta del operador:** si se pierde la respuesta, emitir un nuevo
+        enlace de forma consciente. El enlace anterior queda revocado; no hay forma de
+        recuperar el secreto desde los registros.
+
+        **PROP-OP-01:** Sujeto al mismo mecanismo de autenticación de operador pendiente.
+
+        **CSRF:** requiere `X-CSRF-TOKEN`.
+        **Idempotencia:** las operaciones de credenciales no utilizan el registro
+        genérico de `api_operations` (no se almacena el secreto en `response_body`).
+      tags: [operator]
+      security:
+        - operatorSession: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - name: organizationId
+          in: path
+          required: true
+          description: Identificador opaco de la organización recién incorporada.
+          schema:
+            type: string
+            format: uuid
+            example: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmitInitialLinkRequest"
+      responses:
+        "200":
+          description: |
+            Enlace inicial emitido. El secreto se entrega únicamente en esta respuesta.
+            No se almacena en caché ni en registros de auditoría.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmitInitialLinkResponse"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/SessionRequired"
+        "403":
+          $ref: "#/components/responses/AccessDeniedOrCsrf"
+        "404":
+          $ref: "#/components/responses/ResourceNotFound"
+        "409":
+          description: |
+            `409 INVALID_STATE_TRANSITION` — El administrador ya tiene contraseña
+            configurada. El enlace `INITIAL_SETUP` no es aplicable.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              example:
+                type: "/problems/invalid-state-transition"
+                title: "Transición de estado inválida"
+                status: 409
+                detail: "El administrador ya tiene contraseña configurada."
+                code: "INVALID_STATE_TRANSITION"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  # -- PASSWORD SETUP --------------------------------------------------------
+  /auth/password-reset/inspect:
+    post:
+      operationId: inspectPasswordResetLink
+      summary: Inspeccionar enlace de configuración de contraseña sin consumirlo
+      description: |
+        Verifica si un enlace es válido y devuelve su propósito para que el frontend
+        pueda presentar el formulario adecuado.
+
+        **Propósitos posibles:**
+        - `INITIAL_SETUP`: primera configuración de contraseña del administrador inicial.
+        - `PASSWORD_RESET`: recuperación de contraseña posterior (HU-04.2, fuera de este contrato parcial).
+
+        El enlace **no** se consume al inspeccionarlo.
+        Un enlace inválido, vencido, consumido o revocado devuelve `422 RESET_LINK_INVALID`.
+
+        No expone datos del perfil del usuario ni de la organización.
+
+        No requiere sesión activa (el usuario aún no tiene contraseña).
+        **CSRF:** requiere `X-CSRF-TOKEN`.
+      tags: [password-setup]
+      security:
+        - csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InspectLinkRequest"
+      responses:
+        "200":
+          description: Enlace válido. Propósito devuelto para presentar el formulario.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectLinkResponse"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "403":
+          $ref: "#/components/responses/AccessDeniedOrCsrf"
+        "422":
+          description: Enlace inválido, vencido, consumido o revocado.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              example:
+                type: "/problems/reset-link-invalid"
+                title: "Enlace no utilizable"
+                status: 422
+                detail: "El enlace ha vencido o ya fue utilizado."
+                code: "RESET_LINK_INVALID"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /auth/password-reset/complete:
+    post:
+      operationId: completePasswordSetup
+      summary: Establecer contraseña mediante enlace y consumirlo
+      description: |
+        Establece la contraseña del usuario mediante el secreto contenido en el enlace
+        y consume dicho enlace (un único uso).
+
+        Válido para propósitos `INITIAL_SETUP` y `PASSWORD_RESET`.
+
+        Tras completar la operación:
+        - El enlace queda invalidado.
+        - Las sesiones anteriores del usuario quedan invalidadas.
+        - El usuario debe iniciar sesión nuevamente.
+
+        El secreto del enlace no queda registrado en auditoría ni en resultados
+        de idempotencia (Nota 10, §7.5).
+
+        **Respuesta incierta:** inspeccionar el enlace con `POST /auth/password-reset/inspect`.
+        Si ya fue consumido, el operador debe emitir uno nuevo de forma consciente.
+
+        No requiere sesión activa.
+        **CSRF:** requiere `X-CSRF-TOKEN`.
+      tags: [password-setup]
+      security:
+        - csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompletePasswordSetupRequest"
+      responses:
+        "204":
+          description: |
+            Contraseña establecida y enlace consumido. Sin cuerpo de respuesta.
+            Las sesiones anteriores del usuario quedan invalidadas.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "403":
+          $ref: "#/components/responses/AccessDeniedOrCsrf"
+        "422":
+          description: Enlace inválido, vencido, consumido o revocado.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              example:
+                type: "/problems/reset-link-invalid"
+                title: "Enlace no utilizable"
+                status: 422
+                detail: "El enlace ha vencido o ya fue utilizado."
+                code: "RESET_LINK_INVALID"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+# ---------------------------------------------------------------------------
+# Components
+# ---------------------------------------------------------------------------
+components:
+
+  # -- Security Schemes ------------------------------------------------------
+  # Semántica AND/OR en OpenAPI 3.1:
+  # - Elementos dentro del mismo objeto security: AND (todos requeridos).
+  # - Elementos del array security en distintas entradas: OR (cualquiera basta).
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: TSESSIONID
+      description: |
+        Cookie de sesión empresarial `HttpOnly`, `Secure` en producción, `SameSite=Lax`.
+        El frontend no accede a este valor directamente.
+        Identifica usuarios de `app_users`.
+
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRF-TOKEN
+      description: |
+        Token CSRF obtenido con `GET /auth/csrf`. Obligatorio para todas las escrituras.
+        Obtener uno nuevo tras login y logout.
+
+    operatorSession:
+      type: apiKey
+      in: cookie
+      name: TSOP_SESSION
+      description: |
+        **PROP-OP-01 — Pendiente de aprobación.**
+        Cookie de sesión del operador de plataforma. Entidad separada de `app_users`
+        (tabla `platform_operators`; Nota 07, §6.1).
+        El mecanismo exacto (sesión propia, API key restringida u otro) no está finalizado.
+        Ver `docs/api/README.md` §Mecanismo del operador.
+
+  # -- Headers ---------------------------------------------------------------
+  headers:
+    X-Request-ID:
+      description: Identificador único de la petición, útil para diagnóstico.
+      schema:
+        type: string
+        format: uuid
+        example: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+
+    Idempotency-Replayed:
+      description: |
+        Presente con valor `true` cuando la respuesta fue recuperada de un resultado
+        idempotente anterior, no recalculada.
+      schema:
+        type: boolean
+        example: true
+
+  # -- Parameters ------------------------------------------------------------
+  parameters:
+    CsrfTokenHeader:
+      name: X-CSRF-TOKEN
+      in: header
+      required: true
+      description: Token CSRF activo, obtenido con `GET /auth/csrf`.
+      schema:
+        type: string
+
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        UUID de la intención del cliente para esta operación.
+        Parámetro obligatorio de idempotencia de negocio; no es un mecanismo de autenticación.
+        La clave está delimitada por la identidad del actor (operador o usuario) y el UUID.
+      schema:
+        type: string
+        format: uuid
+        example: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+
+  # -- Schemas ---------------------------------------------------------------
+  schemas:
+
+    # CSRF -------------------------------------------------------------------
+    CsrfTokenResponse:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: Token CSRF a incluir en la cabecera `X-CSRF-TOKEN`.
+          example: "d4e5f6a7-b8c9-0123-4567-89abcdef0123"
+
+    # SESSION ----------------------------------------------------------------
+    SessionResponse:
+      type: object
+      required: [user, organization, landingPage]
+      description: |
+        Identidad y contexto de la sesión activa. La organización se deriva
+        exclusivamente de la sesión en el servidor.
+      properties:
+        user:
+          $ref: "#/components/schemas/SessionUser"
+        organization:
+          $ref: "#/components/schemas/SessionOrganization"
+        landingPage:
+          type: string
+          description: Ruta de la aplicación sugerida según el rol del usuario.
+          example: "/app/mi-horario"
+
+    SessionUser:
+      type: object
+      required: [id, displayName, role]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identificador opaco del usuario.
+          example: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+        displayName:
+          type: string
+          description: Nombre visible del usuario.
+          example: "Ana García"
+        role:
+          $ref: "#/components/schemas/UserRole"
+        employeeId:
+          type:
+            - string
+            - "null"
+          format: uuid
+          description: |
+            Identificador del colaborador vinculado, si existe.
+            `null` si la cuenta no tiene vínculo activo.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    SessionOrganization:
+      type: object
+      required: [id, displayName, timeZone]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identificador opaco de la organización.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        displayName:
+          type: string
+          description: Nombre visible de la organización.
+          example: "Café Demo S.A."
+        timeZone:
+          type: string
+          description: Zona horaria IANA de la organización.
+          example: "America/Lima"
+
+    # LOGIN ------------------------------------------------------------------
+    LoginRequest:
+      type: object
+      required: [organizationCode, email, password]
+      properties:
+        organizationCode:
+          type: string
+          description: |
+            Código de la organización. La búsqueda es insensible a mayúsculas.
+            # TODO: DEC-08 — definir longitud máxima y patrón permitido.
+          example: "CAFE-DEMO"
+          minLength: 1
+        email:
+          type: string
+          format: email
+          description: Dirección de correo electrónico del usuario.
+          example: "ana@cafedemo.example"
+        password:
+          type: string
+          format: password
+          description: Contraseña actual. No se registra.
+          # TODO: DEC-08 — definir longitud mínima/máxima.
+          minLength: 1
+
+    # ONBOARDING (operador) --------------------------------------------------
+    IncorporateOrganizationRequest:
+      type: object
+      required: [organization, site, firstAdmin]
+      properties:
+        organization:
+          $ref: "#/components/schemas/OrganizationInput"
+        site:
+          $ref: "#/components/schemas/SiteInput"
+        firstAdmin:
+          $ref: "#/components/schemas/FirstAdminInput"
+
+    OrganizationInput:
+      type: object
+      required: [code, displayName, timeZone]
+      properties:
+        code:
+          type: string
+          description: |
+            Código único de la organización. Usado por los usuarios al iniciar sesión.
+            Debe ser único en la plataforma.
+            # TODO: DEC-08 — definir longitud máxima y patrón permitido.
+          example: "CAFE-DEMO"
+          minLength: 2
+        displayName:
+          type: string
+          description: |
+            Nombre visible de la organización.
+            # TODO: DEC-08 — definir longitud máxima.
+          example: "Café Demo S.A."
+          minLength: 1
+        timeZone:
+          type: string
+          description: |
+            Zona horaria IANA. Determina interpretación de horarios y pertenencia
+            semanal (lunes–domingo).
+          example: "America/Lima"
+
+    SiteInput:
+      type: object
+      required: [displayName]
+      description: |
+        Datos de la sede inicial. El MVP admite una sede activa por organización
+        (índice único filtrado en `sites`; Nota 07, §6.6).
+        No se puede dar de alta una segunda sede desde la API del cliente.
+      properties:
+        displayName:
+          type: string
+          description: |
+            Nombre visible de la sede.
+            # TODO: DEC-08 — definir longitud máxima.
+          example: "Sede Central Lima"
+          minLength: 1
+
+    FirstAdminInput:
+      type: object
+      required: [email, displayName]
+      description: |
+        Datos de la cuenta del primer administrador. Se crea sin contraseña.
+        El acceso inicial se establece mediante enlace de configuración
+        (propósito `INITIAL_SETUP`), emitido con el endpoint siguiente.
+      properties:
+        email:
+          type: string
+          format: email
+          description: Dirección de correo electrónico del administrador.
+          example: "admin@cafedemo.example"
+        displayName:
+          type: string
+          description: |
+            Nombre visible del administrador.
+            # TODO: DEC-08 — definir longitud máxima.
+          example: "Ana García"
+          minLength: 1
+
+    IncorporateOrganizationResponse:
+      type: object
+      required: [organization, site, firstAdmin]
+      description: |
+        Resultado de la incorporación. La organización existe pero no está
+        habilitada para publicar planificaciones (faltan puestos, colaboradores, política).
+        La cuenta del administrador no tiene contraseña: emitir enlace inicial a continuación.
+      properties:
+        organization:
+          $ref: "#/components/schemas/OrganizationSummary"
+        site:
+          $ref: "#/components/schemas/SiteSummary"
+        firstAdmin:
+          $ref: "#/components/schemas/UserSummary"
+        pendingSetup:
+          type: array
+          description: |
+            Elementos de configuración obligatorios antes de poder publicar.
+          items:
+            type: string
+          example:
+            - "POLICY_NOT_CONFIGURED"
+            - "NO_POSITIONS"
+            - "NO_EMPLOYEES"
+            - "INITIAL_PASSWORD_NOT_SET"
+
+    # INITIAL LINK (operador, HU-04.1) ----------------------------------------
+    EmitInitialLinkRequest:
+      type: object
+      required: [adminUserId, expectedVersion]
+      properties:
+        adminUserId:
+          type: string
+          format: uuid
+          description: |
+            Identificador del usuario administrador al que se emite el enlace.
+            Debe pertenecer a la organización indicada en la ruta.
+          example: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+        expectedVersion:
+          type: integer
+          description: |
+            Versión actual del registro del usuario (`lock_version`).
+            Requerida para control de concurrencia.
+          example: 0
+
+    EmitInitialLinkResponse:
+      type: object
+      required: [setupLink, expiresAt]
+      description: |
+        Enlace inicial para que el administrador establezca su contraseña.
+        El secreto se entrega únicamente aquí. No se puede recuperar después.
+        Transmitir por canal seguro al administrador.
+      properties:
+        setupLink:
+          type: string
+          format: uri
+          description: |
+            Enlace completo de configuración inicial. Contiene el secreto en el fragmento `#`.
+            El frontend del administrador lo enviará al backend en
+            `POST /auth/password-reset/complete`.
+          example: "https://app.turnoshift.example/setup"
+        expiresAt:
+          type: string
+          format: date-time
+          description: |
+            Instante de vencimiento del enlace (UTC).
+            # TODO: DEC-08 — vencimiento propuesto: 30 minutos.
+          example: "2026-08-30T17:30:00Z"
+
+    # SUMMARIES --------------------------------------------------------------
+    OrganizationSummary:
+      type: object
+      required: [id, code, displayName, timeZone]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identificador opaco de la organización.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        code:
+          type: string
+          example: "CAFE-DEMO"
+        displayName:
+          type: string
+          example: "Café Demo S.A."
+        timeZone:
+          type: string
+          example: "America/Lima"
+
+    SiteSummary:
+      type: object
+      required: [id, displayName]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identificador opaco de la sede.
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        displayName:
+          type: string
+          example: "Sede Central Lima"
+
+    UserSummary:
+      type: object
+      required: [id, displayName, email, role]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identificador opaco del usuario.
+          example: "550e8400-e29b-41d4-a716-446655440002"
+        displayName:
+          type: string
+          example: "Ana García"
+        email:
+          type: string
+          format: email
+          example: "admin@cafedemo.example"
+        role:
+          $ref: "#/components/schemas/UserRole"
+
+    # PASSWORD SETUP ---------------------------------------------------------
+    InspectLinkRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: |
+            Secreto del enlace de configuración. Se obtiene desde el fragmento (`#`)
+            de la URL del enlace entregado al administrador por el operador.
+            No se registra ni almacena en caché.
+          minLength: 1
+
+    InspectLinkResponse:
+      type: object
+      required: [valid, purpose]
+      properties:
+        valid:
+          type: boolean
+          description: Si el enlace es válido y utilizable en este momento.
+          example: true
+        purpose:
+          $ref: "#/components/schemas/PasswordResetPurpose"
+
+    CompletePasswordSetupRequest:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token:
+          type: string
+          description: Secreto del enlace de configuración de contraseña.
+          minLength: 1
+        newPassword:
+          type: string
+          format: password
+          description: |
+            Nueva contraseña a establecer. La confirmación se resuelve en la interfaz.
+            # TODO: DEC-08 — definir longitud mínima/máxima y reglas de complejidad.
+          minLength: 1
+
+    # ENUMERATIONS -----------------------------------------------------------
+    UserRole:
+      type: string
+      description: |
+        Rol predefinido de la cuenta empresarial (`app_users.role_code`).
+        - `ADMINISTRADOR`: gestiona la organización completa.
+        - `SUPERVISOR`: gestiona la planificación operativa.
+        - `COLABORADOR`: consulta su horario personal y participa en intercambios.
+        El operador de plataforma **no** es un cuarto rol de esta enumeración
+        (Nota 07, §6.3: "El operador no es un cuarto rol empresarial").
+      enum:
+        - ADMINISTRADOR
+        - SUPERVISOR
+        - COLABORADOR
+      example: ADMINISTRADOR
+
+    PasswordResetPurpose:
+      type: string
+      description: |
+        Propósito del enlace de configuración:
+        - `INITIAL_SETUP`: primera configuración (administrador inicial).
+        - `PASSWORD_RESET`: recuperación posterior (HU-04.2, fuera de este contrato parcial).
+      enum:
+        - INITIAL_SETUP
+        - PASSWORD_RESET
+      example: INITIAL_SETUP
+
+    # ERRORS (Problem Details, RFC 9457) -------------------------------------
+    ProblemDetail:
+      type: object
+      required: [type, title, status, detail, code, requestId]
+      description: |
+        Error en formato Problem Details (RFC 9457). El frontend identifica el problema
+        por `code`, no por `title` ni `detail`.
+        No se exponen excepciones, SQL, secretos ni referencias ajenas.
+      properties:
+        type:
+          type: string
+          description: URI relativa que identifica el tipo de problema.
+          example: "/problems/validation-failed"
+        title:
+          type: string
+          description: Descripción breve del problema (en español).
+          example: "Error de validación"
+        status:
+          type: integer
+          description: Código HTTP equivalente.
+          example: 400
+        detail:
+          type: string
+          description: Explicación legible del problema concreto.
+          example: "El campo 'email' no tiene un formato válido."
+        instance:
+          type: string
+          description: URI de la petición que generó el error.
+          example: "/api/v1/auth/login"
+        code:
+          type: string
+          description: Código de aplicación para identificación programática.
+          example: "VALIDATION_FAILED"
+        requestId:
+          type: string
+          format: uuid
+          description: Identificador de diagnóstico de la petición.
+          example: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+        errors:
+          type: array
+          description: Lista de errores de campo cuando aplique.
+          items:
+            $ref: "#/components/schemas/FieldError"
+          default: []
+
+    FieldError:
+      type: object
+      required: [field, code, message]
+      properties:
+        field:
+          type: string
+          description: Nombre del campo con error (notación `camelCase` o path).
+          example: "organization.code"
+        code:
+          type: string
+          description: Código del error de campo.
+          example: "REQUIRED"
+        message:
+          type: string
+          description: Descripción legible del error de campo.
+          example: "El código de organización es obligatorio."
+
+  # -- Responses -------------------------------------------------------------
+  responses:
+
+    SessionRequired:
+      description: |
+        `401 SESSION_REQUIRED` — No existe sesión activa o la sesión venció.
+        El cliente debe redirigir al inicio de sesión.
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/X-Request-ID"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/session-required"
+            title: "Sesión requerida"
+            status: 401
+            detail: "No existe sesión activa. Inicia sesión para continuar."
+            code: "SESSION_REQUIRED"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []
+
+    AccessDeniedOrCsrf:
+      description: |
+        `403` — Una de dos causas; distinguir por `code`:
+        - `ACCESS_DENIED`: acción no permitida para el rol o estado actual.
+        - `CSRF_INVALID`: cabecera `X-CSRF-TOKEN` ausente o inválida.
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/X-Request-ID"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            accessDenied:
+              summary: Acción no permitida
+              value:
+                type: "/problems/access-denied"
+                title: "Acceso denegado"
+                status: 403
+                detail: "No tienes permiso para realizar esta acción."
+                code: "ACCESS_DENIED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            csrfInvalid:
+              summary: CSRF inválido
+              value:
+                type: "/problems/csrf-invalid"
+                title: "Protección CSRF inválida"
+                status: 403
+                detail: "El token CSRF está ausente o ha vencido."
+                code: "CSRF_INVALID"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    ValidationFailed:
+      description: |
+        `400 VALIDATION_FAILED` — Formato, parámetro, cabecera o estructura inválidos.
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/X-Request-ID"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/validation-failed"
+            title: "Error de validación"
+            status: 400
+            detail: "La petición contiene campos inválidos."
+            code: "VALIDATION_FAILED"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors:
+              - field: "organization.code"
+                code: "REQUIRED"
+                message: "El código de organización es obligatorio."
+
+    UnprocessableEntity:
+      description: |
+        `422` — La petición es interpretable pero incumple reglas de negocio
+        (p. ej., zona horaria desconocida, email duplicado).
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/X-Request-ID"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/validation-failed"
+            title: "Error de validación de negocio"
+            status: 422
+            detail: "La zona horaria indicada no es válida."
+            code: "VALIDATION_FAILED"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors:
+              - field: "organization.timeZone"
+                code: "INVALID_TIMEZONE"
+                message: "La zona horaria 'America/Bogota2' no es reconocida."
+
+    ResourceNotFound:
+      description: |
+        `404 RESOURCE_NOT_FOUND` — El recurso no existe o no es visible para este actor.
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/X-Request-ID"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/resource-not-found"
+            title: "Recurso no encontrado"
+            status: 404
+            detail: "El recurso solicitado no existe o no está disponible."
+            code: "RESOURCE_NOT_FOUND"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []
+
+    RateLimited:
+      description: |
+        `429` — Se superó el límite de solicitudes.
+        # TODO: DEC-08 — definir límites concretos de intentos por periodo.
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/X-Request-ID"
+        Retry-After:
+          schema:
+            type: integer
+            description: Segundos a esperar antes del siguiente intento.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/rate-limited"
+            title: "Límite de solicitudes alcanzado"
+            status: 429
+            detail: "Demasiados intentos. Espera antes de volver a intentarlo."
+            code: "RATE_LIMITED"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []
+
+    ServiceUnavailable:
+      description: "`503` — El servicio está temporalmente no disponible."
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/X-Request-ID"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/service-unavailable"
+            title: "Servicio no disponible"
+            status: 503
+            detail: "El servicio no está disponible temporalmente. Inténtalo más tarde."
+            code: "SERVICE_UNAVAILABLE"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []

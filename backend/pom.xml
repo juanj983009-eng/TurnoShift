@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.0.0</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.turnoshift</groupId>
+    <artifactId>turnoshift-backend</artifactId>
+    <version>0.1.0</version>
+    <name>turnoshift-backend</name>
+    <description>TurnoShift SaaS Backend Base</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!--
+            Versiones efectivas según BOM de Spring Boot 4.0.0
+            (spring-boot-dependencies-4.0.0.pom en Maven Central, verificado 2026-08-30):
+              flyway.version          = 11.14.1
+              mssql-jdbc.version      = 13.2.1.jre11
+              testcontainers          = 2.0.2   (groupId org.testcontainers)
+              junit-jupiter.version   = 6.0.1
+              spring-jdbc             = 7.0.1   (transitivo de spring-boot-starter-jdbc)
+              maven-surefire-plugin   = 3.5.4
+              maven-failsafe-plugin   = 3.5.4
+            No se sobreescriben; el BOM las administra.
+        -->
+    </properties>
+
+    <dependencies>
+
+        <!-- ============================================================
+             PRODUCCIÓN — dependencias empaquetadas en el JAR
+             ============================================================ -->
+
+        <!-- HTTP / REST (ya existente) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!--
+            Spring Boot JDBC Starter — provee DataSource (HikariCP), JdbcTemplate
+            y la integración automática de Flyway con el DataSource configurado.
+            Sin JPA/Hibernate: se usa SQL explícito según Nota 06, §14.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+
+        <!--
+            Flyway core — versión 11.14.1 (BOM).
+            La auto-configuración de Spring Boot lo detecta y ejecuta las
+            migraciones de classpath:db/migration/ al arrancar.
+            Flyway.clean() deshabilitado en application.properties.
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+
+        <!--
+            Módulo Flyway para SQL Server — requerido desde Flyway 10+.
+            Registra el soporte de dialecto T-SQL para el motor de migraciones.
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-sqlserver</artifactId>
+        </dependency>
+
+        <!--
+            Controlador JDBC de Microsoft SQL Server — versión 13.2.1.jre11 (BOM).
+            Alcance runtime: no se referencia directamente desde el código de aplicación.
+        -->
+        <dependency>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- ============================================================
+             PRUEBAS — alcance test: NO se empaquetan en el JAR de producción
+             ============================================================ -->
+
+        <!-- Spring Boot Test (JUnit Jupiter, Mockito, AssertJ) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+            Spring Boot Testcontainers — integración @ServiceConnection.
+            Permite conectar automáticamente el contexto de prueba al contenedor.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+            Testcontainers core — versión 2.0.2 (BOM).
+            Incluido transitivamente por testcontainers-junit-jupiter y
+            testcontainers-mssqlserver; se declara explícitamente para visibilidad.
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+            JUnit Jupiter integration de Testcontainers 2.x.
+            Artifact en TC 2.x: testcontainers-junit-jupiter (no "junit-jupiter").
+            Paquete: org.testcontainers.junit.jupiter — provee @Testcontainers, @Container.
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+            Módulo SQL Server de Testcontainers 2.x.
+            Artifact: testcontainers-mssqlserver:2.0.2
+            Clase: org.testcontainers.mssqlserver.MSSQLServerContainer
+            Requiere aceptación de la EULA de Microsoft (.acceptLicense()).
+            SQL Server 2022 Developer: solo para desarrollo/pruebas, no producción.
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-mssqlserver</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!--
+                maven-surefire-plugin — pruebas unitarias en la fase test.
+                Versión 3.5.4 (BOM).
+                Excluye clases *IT y *IntegrationTest; Failsafe las gestiona.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>**/*IT.java</exclude>
+                        <exclude>**/*IntegrationTest.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+
+            <!--
+                maven-failsafe-plugin — pruebas de integración en la fase verify.
+                Versión 3.5.4 (BOM).
+                Incluye clases *IT y *IntegrationTest.
+
+                JAVA_HOME debe configurarse en el entorno antes de invocar Maven;
+                no se pasa como propiedad -D al comando mvnw.
+
+                Si Docker no está disponible, Testcontainers lanza
+                DockerNotAvailableException. La prueba falla con error claro;
+                no se omite ni se sustituye por H2.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <includes>
+                        <include>**/*IT.java</include>
+                        <include>**/*IntegrationTest.java</include>
+                    </includes>
+                    <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>

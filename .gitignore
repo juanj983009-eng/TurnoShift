@@ -1,0 +1,48 @@
+# Archivos de SO y sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+*.log
+
+# Entorno e IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*.user
+*.suo
+
+# Secretos y Variables de Entorno (.env y variantes ignorados, permitiendo plantillas .example)
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.cert
+secrets/
+
+# Backend (Java / Spring Boot / Maven)
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+!**/wrapper/maven-wrapper.jar
+*.war
+*.ear
+.mvn/timing.properties
+
+# Frontend (Node / React / Vite)
+node_modules/
+dist/
+dist-ssr/
+coverage/
+.npm/
+
+# Docker y temporales locales
+.docker/
+docker-data/
+
+# Archivos de respaldo locales
+*.bak

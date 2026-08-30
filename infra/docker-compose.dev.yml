@@ -1,0 +1,73 @@
+# =============================================================================
+# TurnoShift — Entorno de desarrollo local: SQL Server 2022
+# =============================================================================
+# USO EXCLUSIVO para desarrollo local. NO es configuración de producción.
+#
+# Imagen: mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04
+# Licencia: SQL Server 2022 Developer Edition.
+#   Autorizada para desarrollo y pruebas. Prohibida en producción.
+#   https://www.microsoft.com/en-us/sql-server/sql-server-downloads
+#
+# PREPARACIÓN:
+#   1. Copiar infra/.env.dev.example → infra/.env.dev y asignar contraseña fuerte.
+#      El archivo .env.dev está ignorado por Git.
+#   2. Levantar el servicio:
+#        docker compose -f infra/docker-compose.dev.yml --env-file infra/.env.dev up -d
+#   3. Crear la base (primera vez, o si se destruyó el volumen):
+#        docker compose -f infra/docker-compose.dev.yml --env-file infra/.env.dev \
+#          exec turnoshift-sqldev \
+#          /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" \
+#          -Q "IF DB_ID('turnoshift_dev') IS NULL CREATE DATABASE turnoshift_dev"
+#   4. Exportar variables para Spring Boot (Spring Boot NO lee .env automáticamente):
+#        # Windows CMD:
+#        set TURNOSHIFT_DB_URL=jdbc:sqlserver://localhost:11433;databaseName=turnoshift_dev;encrypt=false
+#        set TURNOSHIFT_DB_USER=sa
+#        set TURNOSHIFT_DB_PASSWORD=<contraseña de .env.dev>
+#        # PowerShell:
+#        $env:TURNOSHIFT_DB_URL="jdbc:sqlserver://localhost:11433;databaseName=turnoshift_dev;encrypt=false"
+#        $env:TURNOSHIFT_DB_USER="sa"
+#        $env:TURNOSHIFT_DB_PASSWORD="<contraseña de .env.dev>"
+#   5. Arrancar el backend:
+#        cd backend
+#        cmd /c "mvnw.cmd spring-boot:run"
+#
+# PARAR (sin destruir datos):
+#   docker compose -f infra/docker-compose.dev.yml stop
+#
+# DESTRUIR datos (volumen):
+#   docker compose -f infra/docker-compose.dev.yml --env-file infra/.env.dev down -v
+#   PRECAUCIÓN: elimina todos los datos de turnoshift_dev.
+# =============================================================================
+
+services:
+  turnoshift-sqldev:
+    image: mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04
+    container_name: turnoshift-sqldev
+    restart: "no"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD}"
+      # Edición Developer: solo para desarrollo/pruebas
+      MSSQL_PID: "Developer"
+    ports:
+      # Puerto 11433 en loopback únicamente → evita conflicto con instancias SQL Server locales (1433).
+      - "127.0.0.1:11433:1433"
+    volumes:
+      # Volumen nombrado identificado como propiedad de TurnoShift dev
+      - turnoshift_sqldev_data:/var/opt/mssql
+    healthcheck:
+      # Verifica que SQL Server responde antes de considerarlo ready
+      test:
+        - "CMD-SHELL"
+        - >
+          /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa
+          -P "$$MSSQL_SA_PASSWORD" -Q "SELECT 1" > /dev/null 2>&1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  turnoshift_sqldev_data:
+    name: turnoshift_sqldev_data
+    driver: local
