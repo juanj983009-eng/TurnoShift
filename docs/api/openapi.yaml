@@ -1,23 +1,39 @@
 openapi: "3.1.0"
 
 info:
-  title: TurnoShift API — Contrato parcial I1
-  version: "0.1.0-i1"
+  title: TurnoShift API — Contrato MVP (I1 + I2.1 + I2.2 + I2.3 + I2.4)
+  version: "0.2.4-i2.4"
   description: |
     Contrato HTTP del MVP de TurnoShift.
 
-    **Estado:** contrato parcial de I1. Diseño consolidado; implementación pendiente.
-    Este archivo no demuestra que los endpoints estén implementados, probados ni desplegados.
+    **Estado:** contrato consolidado que abarca los endpoints de I1, las rutas implementadas
+    de I2.1 (HU-05 y HU-06), la gestión de colaboradores de I2.2 (HU-07), la política operativa
+    inicial de I2.3 y las mutaciones de indisponibilidades de I2.4 (HU-08).
 
-    **Alcance de este contrato (I1 — Acceso seguro):**
-    - Token CSRF y estado de sesión.
-    - Inicio y cierre de sesión empresarial.
-    - Incorporación de organización + sede + primer administrador, ejecutada por el operador
-      de plataforma mediante herramienta restringida (ver nota sobre mecanismo del operador).
-    - Emisión del enlace inicial de contraseña para el primer administrador, integrada con HU-01.
-    - Establecimiento de contraseña mediante enlace e inspección previa.
-    - Endpoint de salud del backend (verificado, fuera del prefijo `/api/v1`).
-    - Respuestas de error transversales.
+    **Alcance de este contrato:**
+    - **I1 (Acceso seguro e infraestructura):**
+      - Token CSRF y estado de sesión.
+      - Inicio y cierre de sesión empresarial.
+      - Incorporación de organización + sede + primer administrador, ejecutada por el operador
+        de plataforma mediante herramienta restringida (ver nota sobre mecanismo del operador).
+      - Emisión del enlace inicial de contraseña para el primer administrador, integrada con HU-01.
+      - Establecimiento de contraseña mediante enlace e inspección previa.
+      - Endpoint de salud del backend (verificado, fuera del prefijo `/api/v1`).
+      - Respuestas de error transversales RFC 9457.
+    - **I2.1 (Configuración de organización y catálogo de puestos):**
+      - HU-06: Consulta, creación, actualización y cambio de estado de puestos de trabajo.
+      - HU-05: Consulta y actualización de configuración general de organización y su sede única activa.
+    - **I2.2 (Gestión de colaboradores / empleados):**
+      - HU-07: Consulta, registro, modificación, activación, desactivación y evaluación previa de precondiciones de colaboradores.
+    - **I2.3 (Política operativa inicial):**
+      - Consulta de la política operativa vigente (`GET /policies/current`).
+      - Consulta del historial cronológico de versiones de política (`GET /policies/history`).
+      - Previsualización determinista del impacto de una propuesta de cambio (`POST /policies/preview`).
+      - Activación transaccional e idempotente de una nueva versión de política con bloqueo optimista y por organización (`POST /policies/activate`).
+    - **I2.4 (Indisponibilidades de colaboradores — HU-08):**
+      - Registro de indisponibilidad parcial o de día completo para un colaborador (`POST /employees/{employeeId}/unavailabilities`).
+      - Modificación de indisponibilidad activa con concurrencia optimista (`PUT /unavailabilities/{unavailabilityId}`).
+      - Cancelación de indisponibilidad activa con concurrencia optimista (`POST /unavailabilities/{unavailabilityId}/cancel`).
 
     **Pendiente de decisión — Mecanismo del operador (PROP-OP-01):**
     Las notas de planificación especifican que el alta y la suspensión de organizaciones se
@@ -28,16 +44,11 @@ info:
     pendientes de aprobación del mecanismo de autenticación del operador.
     Ver `docs/api/README.md` §Mecanismo del operador.
 
-    **Fuera de este contrato parcial (I1):**
-    Los siguientes endpoints se definen en I1 pero no se incluyen aquí por estar fuera del
-    subconjunto de acceso inicial:
-    - `POST /auth/change-password` (HU-04.2 — gestión posterior autenticada).
-    - Administración de usuarios (`GET /users`, `POST /users`, `PATCH /users/{id}`, etc.).
-    - Recuperación de contraseña posterior a primera configuración (HU-04.2).
-
-    **Fuera del incremento I1 (I2 y posteriores):**
-    RF-002 a RF-003, RF-006 a RF-018, sede, puestos, colaboradores, indisponibilidades,
-    planificación, intercambios, reportes y avisos.
+    **Fuera de este contrato:**
+    - Endpoints de I1 no incluidos en el subconjunto inicial: `POST /auth/change-password` (HU-04.2),
+      administración de usuarios (HU-03).
+    - Endpoints posteriores a I2.4: Contratos y jornadas laborales,
+      planificación (I3), intercambios (I4), reportes y avisos (I5+).
 
     **Convenciones:**
     - Prefijo base de API empresarial: `/api/v1`.
@@ -48,11 +59,13 @@ info:
     - Identificadores de negocio: UUID v4 representados como cadenas opacas.
     - Autenticación empresarial: cookie de sesión (`HttpOnly`, `Secure` en producción,
       `SameSite=Lax`). El token de sesión **no** viaja en JSON ni en `Authorization`.
-    - La organización se deriva **exclusivamente** de la sesión en el servidor;
-      no se acepta `organizationId` enviado por el cliente para autorizar operaciones.
+    - La organización y el usuario se derivan **exclusivamente** de la sesión en el servidor;
+      no se acepta `organizationId` ni `actorUserId` enviado por el cliente para autorizar operaciones.
     - CSRF: cabecera `X-CSRF-TOKEN` obligatoria para todas las escrituras.
-    - Idempotencia: cabecera `Idempotency-Key` como parámetro obligatorio en comandos de negocio
-      (no es un mecanismo de autenticación).
+    - Idempotencia: cabecera `Idempotency-Key` (UUID) obligatoria en todos los comandos de negocio
+      con soporte para repetición determinista (`Idempotency-Replayed: true`).
+    - Concurrencia optimista: parámetro obligatorio `expectedLockVersion` en modificaciones
+      de recursos versionados. Si la versión esperada es obsoleta, responde `409 CONCURRENT_MODIFICATION`.
 
   contact:
     name: TurnoShift — equipo de desarrollo
@@ -80,6 +93,16 @@ tags:
       Pendiente de decisión sobre mecanismo de autenticación (PROP-OP-01).
   - name: password-setup
     description: Configuración inicial de contraseña mediante enlace de un solo uso.
+  - name: positions
+    description: Gestión del catálogo de puestos de trabajo de la organización (HU-06).
+  - name: organization
+    description: Consulta y actualización de configuración general de organización y sede única activa (HU-05).
+  - name: employees
+    description: Gestión del catálogo y ciclo de vida de colaboradores de la organización (HU-07).
+  - name: policies
+    description: Gestión de la política operativa inicial de la organización (I2.3).
+  - name: unavailabilities
+    description: Gestión de indisponibilidades de colaboradores (HU-08 / I2.4).
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -236,7 +259,7 @@ paths:
             Set-Cookie:
               schema:
                 type: string
-                example: "TSESSIONID=<opaque>; HttpOnly; SameSite=Lax; Path=/"
+                example: "TSESSIONID=<opaque>; HttpOnly; SameSite=Lax; Path=/api"
             Cache-Control:
               schema:
                 type: string
@@ -309,6 +332,142 @@ paths:
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
+        "401":
+          $ref: "#/components/responses/SessionRequired"
+        "403":
+          $ref: "#/components/responses/AccessDeniedOrCsrf"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  # -- OPERATOR: AUTHENTICATION & SESSION ------------------------------------
+  /operator/auth/login:
+    post:
+      operationId: operatorLogin
+      summary: "[OPERADOR] Iniciar sesión de operador de plataforma"
+      description: |
+        Verifica las credenciales del operador de plataforma (`email` y `password`)
+        y establece una sesión segura mediante cookie `TSESSIONID`.
+        No requiere código de organización.
+
+        **Condiciones de rechazo:**
+        - Credenciales incorrectas, operador inexistente o inactivo → `401 AUTHENTICATION_FAILED` (indistinguible).
+        - CSRF ausente o inválido → `403 CSRF_INVALID`.
+        - Tasa de intentos excedida → `429 RATE_LIMITED` con `Retry-After`.
+        - Error técnico de base de datos → `503 SERVICE_UNAVAILABLE`.
+
+        **CSRF:** requiere cabecera `X-CSRF-TOKEN` y sesión anónima o previa.
+      tags: [operator]
+      security:
+        - csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperatorLoginRequest"
+      responses:
+        "200":
+          description: Sesión de operador iniciada. La cookie TSESSIONID se establece en la respuesta.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+            Set-Cookie:
+              schema:
+                type: string
+                example: "TSESSIONID=<opaque>; HttpOnly; SameSite=Lax; Path=/api"
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorSessionResponse"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/AuthenticationFailed"
+        "403":
+          $ref: "#/components/responses/AccessDeniedOrCsrf"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /operator/auth/session:
+    get:
+      operationId: getOperatorSessionState
+      summary: "[OPERADOR] Consultar identidad y contexto de la sesión de operador activa"
+      description: |
+        Devuelve el identificador y nombre visible del operador de plataforma asociado a la sesión en curso.
+        Requiere autoridad `ROLE_PLATFORM_OPERATOR`.
+
+        Si no existe sesión de operador activa o ha vencido, responde `401 SESSION_REQUIRED`.
+        Si la petición proviene de un usuario empresarial autenticado, responde `403 ACCESS_DENIED`.
+        Este endpoint no crea ni renueva sesiones.
+      tags: [operator]
+      security:
+        - operatorSession: []
+      responses:
+        "200":
+          description: Sesión de operador activa.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorSessionResponse"
+        "401":
+          $ref: "#/components/responses/SessionRequired"
+        "403":
+          $ref: "#/components/responses/AccessDeniedOrCsrf"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /operator/auth/logout:
+    post:
+      operationId: operatorLogout
+      summary: "[OPERADOR] Cerrar sesión de operador"
+      description: |
+        Invalida la sesión activa del operador de plataforma en el servidor y revoca la cookie `TSESSIONID`.
+        Requiere sesión activa de operador (`ROLE_PLATFORM_OPERATOR`) y cabecera `X-CSRF-TOKEN` válida.
+      tags: [operator]
+      security:
+        - operatorSession: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Cuerpo vacío. El servidor no acepta campos adicionales.
+              maxProperties: 0
+      responses:
+        "204":
+          description: Sesión de operador cerrada correctamente. Sin cuerpo.
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/X-Request-ID"
+            Set-Cookie:
+              schema:
+                type: string
+                example: "TSESSIONID=; Max-Age=0; Path=/api; HttpOnly; SameSite=Lax"
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
         "401":
           $ref: "#/components/responses/SessionRequired"
         "403":
@@ -417,6 +576,7 @@ paths:
           description: |
             Conflicto. Causas posibles:
             - `IDEMPOTENCY_KEY_REUSED`: la clave fue utilizada con contenido diferente.
+            - `IDEMPOTENCY_KEY_EXPIRED`: la clave ha superado su periodo de vigencia (24 horas).
             - `ORGANIZATION_CODE_CONFLICT`: el código de organización ya existe.
           headers:
             X-Request-ID:
@@ -434,6 +594,16 @@ paths:
                     status: 409
                     detail: "La clave de idempotencia fue usada previamente con un contenido diferente."
                     code: "IDEMPOTENCY_KEY_REUSED"
+                    requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                    errors: []
+                idempotencyExpired:
+                  summary: Clave de idempotencia expirada
+                  value:
+                    type: "/problems/idempotency-key-expired"
+                    title: "Clave de idempotencia expirada"
+                    status: 409
+                    detail: "La clave de idempotencia ha superado el periodo de vigencia permitido (24 horas)."
+                    code: "IDEMPOTENCY_KEY_EXPIRED"
                     requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
                     errors: []
                 codeConflict:
@@ -496,6 +666,7 @@ paths:
           csrfHeader: []
       parameters:
         - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
         - name: organizationId
           in: path
           required: true
@@ -536,23 +707,52 @@ paths:
           $ref: "#/components/responses/ResourceNotFound"
         "409":
           description: |
-            `409 INVALID_STATE_TRANSITION` — El administrador ya tiene contraseña
-            configurada. El enlace `INITIAL_SETUP` no es aplicable.
+            Conflicto. Causas posibles:
+            - `INVALID_STATE_TRANSITION`: el administrador ya tiene contraseña configurada o la cuenta/organización no está activa.
+            - `CONCURRENT_MODIFICATION`: la versión esperada (`expectedVersion`) no coincide con la versión actual del administrador.
+            - `INITIAL_LINK_ALREADY_EMITTED`: intento de repetición con la misma clave de idempotencia; el secreto no es almacenable ni reproducible y no se generan enlaces duplicados.
+            - `IDEMPOTENCY_KEY_REUSED`: la clave de idempotencia fue reutilizada con una huella de petición diferente.
+            - `IDEMPOTENCY_KEY_EXPIRED`: la clave de idempotencia ha superado el periodo de vigencia permitido (24 horas).
           headers:
             X-Request-ID:
               $ref: "#/components/headers/X-Request-ID"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/Idempotency-Replayed"
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-              example:
-                type: "/problems/invalid-state-transition"
-                title: "Transición de estado inválida"
-                status: 409
-                detail: "El administrador ya tiene contraseña configurada."
-                code: "INVALID_STATE_TRANSITION"
-                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
-                errors: []
+              examples:
+                invalidStateTransition:
+                  summary: Administrador con contraseña ya configurada
+                  value:
+                    type: "/problems/invalid-state-transition"
+                    title: "Transición de estado inválida"
+                    status: 409
+                    detail: "El administrador ya tiene contraseña configurada."
+                    code: "INVALID_STATE_TRANSITION"
+                    requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                    errors: []
+                linkAlreadyEmitted:
+                  summary: Enlace inicial ya emitido con esta clave de idempotencia
+                  value:
+                    type: "/problems/initial-link-already-emitted"
+                    title: "Enlace inicial ya emitido para esta clave de idempotencia"
+                    status: 409
+                    detail: "El enlace inicial ya fue emitido para esta clave de idempotencia. Por motivos de seguridad, el secreto no se almacena y no puede ser reproducido. Si perdió la respuesta y necesita un nuevo enlace, emita deliberadamente una nueva solicitud con una nueva cabecera Idempotency-Key y la versión actual del administrador (el enlace anterior quedará revocado)."
+                    code: "INITIAL_LINK_ALREADY_EMITTED"
+                    requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                    errors: []
+                concurrentModification:
+                  summary: Conflicto de versión (concurrencia optimista)
+                  value:
+                    type: "/problems/concurrent-modification"
+                    title: "Conflicto de versión del administrador"
+                    status: 409
+                    detail: "La versión esperada (0) no coincide con la versión actual (1) del administrador."
+                    code: "CONCURRENT_MODIFICATION"
+                    requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                    errors: []
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
@@ -565,9 +765,9 @@ paths:
         Verifica si un enlace es válido y devuelve su propósito para que el frontend
         pueda presentar el formulario adecuado.
 
-        **Propósitos posibles:**
-        - `INITIAL_SETUP`: primera configuración de contraseña del administrador inicial.
-        - `PASSWORD_RESET`: recuperación de contraseña posterior (HU-04.2, fuera de este contrato parcial).
+        **Propósitos del enlace:**
+        - `INITIAL_SETUP`: primera configuración de contraseña del administrador inicial. Es el único propósito soportado y habilitado en esta versión.
+        - `PASSWORD_RESET`: recuperación de contraseña posterior (HU-04.2); capacidad futura reservada en el esquema pero no habilitada en esta versión (un enlace con este propósito devolverá `422 RESET_LINK_INVALID`).
 
         El enlace **no** se consume al inspeccionarlo.
         Un enlace inválido, vencido, consumido o revocado devuelve `422 RESET_LINK_INVALID`.
@@ -633,7 +833,9 @@ paths:
         Establece la contraseña del usuario mediante el secreto contenido en el enlace
         y consume dicho enlace (un único uso).
 
-        Válido para propósitos `INITIAL_SETUP` y `PASSWORD_RESET`.
+        Válido únicamente para el propósito `INITIAL_SETUP` en esta versión. El propósito
+        `PASSWORD_RESET` corresponde a la recuperación posterior (HU-04.2) y no está
+        habilitado actualmente en este endpoint.
 
         Tras completar la operación:
         - El enlace queda invalidado.
@@ -691,6 +893,1301 @@ paths:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
+  # -- POSITIONS (HU-06) -----------------------------------------------------
+  /positions:
+    get:
+      operationId: getPositions
+      summary: Consultar catálogo de puestos de trabajo
+      description: |
+        Devuelve la lista de puestos de trabajo registrados en la organización a la que
+        pertenece el usuario autenticado.
+
+        **Actor:** Usuario empresarial autenticado con rol `ADMINISTRADOR` o `SUPERVISOR`.
+        Usuarios con rol `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Aislamiento multi-tenant:** La organización se deriva exclusivamente de la sesión
+        activa en el servidor. Nunca se recibe `organizationId` por el cliente.
+
+        **Filtro por estado:** Mediante el parámetro opcional `active`:
+        - Si se omite: devuelve todos los puestos (activos e inactivos).
+        - `active=true`: solo puestos activos.
+        - `active=false`: solo puestos inactivos.
+        - Si se envía vacío, solo con espacios o con cualquier otro valor, responde `400 VALIDATION_FAILED`.
+      tags: [positions]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/PositionActiveQuery"
+      responses:
+        "200":
+          description: Lista de puestos obtenida con éxito. Si no existen puestos, devuelve un arreglo vacío `[]`.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PositionResponse"
+        "400":
+          $ref: "#/components/responses/I21ValidationFailed"
+        "401":
+          $ref: "#/components/responses/I21SessionRequired"
+        "403":
+          $ref: "#/components/responses/I21AccessDeniedOrCsrf"
+        "503":
+          $ref: "#/components/responses/I21ServiceUnavailable"
+
+    post:
+      operationId: createPosition
+      summary: Crear un puesto de trabajo
+      description: |
+        Registra un nuevo puesto de trabajo en la organización del usuario autenticado.
+        El nuevo puesto se crea inicialmente en estado activo (`isActive: true`) con `lockVersion: 0`.
+
+        **Actor:** Requiere rol `ADMINISTRADOR`. Roles `SUPERVISOR` y `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad:** Requiere cookie de sesión activa y token CSRF en `X-CSRF-TOKEN`.
+        **Idempotencia:** Requiere cabecera `Idempotency-Key` (UUID). Ejecución coordinada
+        mediante `BusinessIdempotentOperationExecutor`. Replays deterministas devuelven
+        la respuesta original con la cabecera `Idempotency-Replayed: true` (el replay exitoso
+        no incluye cabecera `X-Request-ID`; las respuestas Problem Details incluyen un `requestId` fresco).
+
+        **Reglas de validación:**
+        - `code`: obligatorio, normalizado a mayúsculas, alfanumérico con guiones (`^[A-Z0-9-]+$`), entre 2 y 32 caracteres.
+          Debe ser único en la organización. Si ya existe, responde `409 POSITION_CODE_ALREADY_EXISTS`.
+        - `name`: obligatorio, texto limpio no vacío, máximo 100 caracteres.
+        - No se acepta `organizationId` ni `actorUserId`; se derivan del servidor.
+      tags: [positions]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePositionRequest"
+      responses:
+        "201":
+          description: Puesto de trabajo creado exitosamente.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/Idempotency-Replayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PositionResponse"
+        "400":
+          $ref: "#/components/responses/I21ValidationFailed"
+        "401":
+          $ref: "#/components/responses/I21SessionRequired"
+        "403":
+          $ref: "#/components/responses/I21AccessDeniedOrCsrf"
+        "409":
+          $ref: "#/components/responses/PositionCreationConflict"
+        "503":
+          $ref: "#/components/responses/I21ServiceUnavailable"
+
+  /positions/{positionId}:
+    put:
+      operationId: updatePosition
+      summary: Actualizar nombre de un puesto de trabajo
+      description: |
+        Actualiza el nombre descriptivo de un puesto existente dentro de la organización.
+        El código del puesto (`code`) es inmutable y no se modifica tras la creación.
+
+        **Actor:** Requiere rol `ADMINISTRADOR`. Roles `SUPERVISOR` y `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad:** Requiere cookie de sesión activa y token CSRF en `X-CSRF-TOKEN`.
+        **Idempotencia:** Requiere cabecera `Idempotency-Key` (UUID). Replays deterministas retornan
+        `Idempotency-Replayed: true`.
+
+        **Control de concurrencia optimista:** Requiere `expectedLockVersion` (mayor o igual a 0).
+        Si la versión enviada no coincide con la versión actual en la base de datos,
+        la operación se rechaza con `409 CONCURRENT_MODIFICATION`.
+        Tras una actualización exitosa, el `lockVersion` del puesto se incrementa en 1.
+
+        **Puesto no encontrado:** Si el `positionId` no existe o no pertenece a la organización
+        del usuario autenticado, responde `404 POSITION_NOT_FOUND`.
+      tags: [positions]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/PositionIdPath"
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePositionRequest"
+      responses:
+        "200":
+          description: Puesto de trabajo actualizado exitosamente.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/Idempotency-Replayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PositionResponse"
+        "400":
+          $ref: "#/components/responses/I21ValidationFailed"
+        "401":
+          $ref: "#/components/responses/I21SessionRequired"
+        "403":
+          $ref: "#/components/responses/I21AccessDeniedOrCsrf"
+        "404":
+          $ref: "#/components/responses/PositionNotFound"
+        "409":
+          $ref: "#/components/responses/PositionMutationConflict"
+        "503":
+          $ref: "#/components/responses/I21ServiceUnavailable"
+
+  /positions/{positionId}/status:
+    patch:
+      operationId: changePositionStatus
+      summary: Activar o desactivar un puesto de trabajo
+      description: |
+        Cambia el estado de activación (`isActive`) de un puesto de trabajo existente.
+
+        **Actor:** Requiere rol `ADMINISTRADOR`. Roles `SUPERVISOR` y `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad:** Requiere cookie de sesión activa y token CSRF en `X-CSRF-TOKEN`.
+        **Idempotencia:** Requiere cabecera `Idempotency-Key` (UUID). Replays deterministas retornan
+        `Idempotency-Replayed: true`.
+
+        **Control de concurrencia optimista:** Requiere `expectedLockVersion` (mayor o igual a 0).
+        Si la versión enviada no coincide con la versión actual, responde `409 CONCURRENT_MODIFICATION`.
+        Tras una actualización exitosa, el `lockVersion` del puesto se incrementa en 1.
+
+        **Puesto no encontrado:** Si el `positionId` no existe o no pertenece a la organización,
+        responde `404 POSITION_NOT_FOUND`.
+      tags: [positions]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/PositionIdPath"
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePositionStatusRequest"
+      responses:
+        "200":
+          description: Estado del puesto actualizado exitosamente.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/Idempotency-Replayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PositionResponse"
+        "400":
+          $ref: "#/components/responses/I21ValidationFailed"
+        "401":
+          $ref: "#/components/responses/I21SessionRequired"
+        "403":
+          $ref: "#/components/responses/I21AccessDeniedOrCsrf"
+        "404":
+          $ref: "#/components/responses/PositionNotFound"
+        "409":
+          $ref: "#/components/responses/PositionMutationConflict"
+        "503":
+          $ref: "#/components/responses/I21ServiceUnavailable"
+
+  # -- ORGANIZATION CONFIGURATION (HU-05) -------------------------------------
+  /organization/configuration:
+    get:
+      operationId: getOrganizationConfiguration
+      summary: Consultar configuración de la organización y su sede activa
+      description: |
+        Devuelve la configuración general de la organización y los datos de su sede única activa.
+
+        **Actor:** Usuario empresarial autenticado con rol `ADMINISTRADOR` o `SUPERVISOR`.
+        Usuarios con rol `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad e información restringida:**
+        - La organización se deriva exclusivamente del contexto de sesión en el servidor.
+        - `timezoneId` se expone únicamente en modo lectura para contextualizar las operaciones;
+          no existe endpoint para modificarlo en I2.1.
+        - Campos internos y restringidos como `service_status`, `max_active_employees`
+          y `current_policy_version_id` **no** se exponen en este endpoint.
+        - Si la organización o la sede activa no existen, devuelve `404 RESOURCE_NOT_FOUND`
+          con un detalle seguro que no filtra identificadores internos.
+      tags: [organization]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Configuración general y sede activa devueltas correctamente.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationConfigurationResponse"
+        "401":
+          $ref: "#/components/responses/I21SessionRequired"
+        "403":
+          $ref: "#/components/responses/I21AccessDeniedOrCsrf"
+        "404":
+          $ref: "#/components/responses/OrganizationResourceNotFound"
+        "503":
+          $ref: "#/components/responses/I21ServiceUnavailable"
+
+  /organization/configuration/display-name:
+    patch:
+      operationId: updateOrganizationDisplayName
+      summary: Actualizar nombre visible de la organización
+      description: |
+        Actualiza el nombre visible (`displayName`) de la organización del usuario autenticado.
+
+        **Actor:** Requiere rol `ADMINISTRADOR`. Roles `SUPERVISOR` y `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad:** Requiere cookie de sesión activa y token CSRF en `X-CSRF-TOKEN`.
+        **Idempotencia:** Requiere cabecera `Idempotency-Key` (UUID). Ejecución idempotente con
+        replays deterministas que retornan `Idempotency-Replayed: true`.
+
+        **Control de concurrencia optimista:** Requiere `expectedLockVersion` (mayor o igual a 0).
+        Si la versión enviada no coincide con la versión actual de la organización,
+        responde `409 CONCURRENT_MODIFICATION`.
+        Tras una actualización exitosa, el `lockVersion` de la organización se incrementa en 1.
+
+        **Respuesta:** Devuelve la vista actualizada de la organización (`OrganizationView`).
+      tags: [organization]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrganizationDisplayNameRequest"
+      responses:
+        "200":
+          description: Nombre visible de la organización actualizado exitosamente.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/Idempotency-Replayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationView"
+        "400":
+          $ref: "#/components/responses/I21ValidationFailed"
+        "401":
+          $ref: "#/components/responses/I21SessionRequired"
+        "403":
+          $ref: "#/components/responses/I21AccessDeniedOrCsrf"
+        "404":
+          $ref: "#/components/responses/OrganizationResourceNotFound"
+        "409":
+          $ref: "#/components/responses/OrganizationConflict"
+        "503":
+          $ref: "#/components/responses/I21ServiceUnavailable"
+
+  /organization/configuration/active-site/name:
+    patch:
+      operationId: updateActiveSiteName
+      summary: Actualizar nombre de la sede activa
+      description: |
+        Actualiza el nombre descriptivo de la única sede activa de la organización.
+        El código de la sede (`code`) es inmutable y no se puede modificar.
+
+        **Actor:** Requiere rol `ADMINISTRADOR`. Roles `SUPERVISOR` y `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad:** Requiere cookie de sesión activa y token CSRF en `X-CSRF-TOKEN`.
+        **Idempotencia:** Requiere cabecera `Idempotency-Key` (UUID). Ejecución idempotente con
+        replays deterministas que retornan `Idempotency-Replayed: true`.
+
+        **Control de concurrencia optimista:** Requiere `expectedLockVersion` (mayor o igual a 0).
+        Si la versión enviada no coincide con la versión actual de la sede,
+        responde `409 CONCURRENT_MODIFICATION`.
+        Tras una actualización exitosa, el `lockVersion` de la sede se incrementa en 1.
+
+        **Respuesta:** Devuelve la vista actualizada de la sede activa (`ActiveSiteView`).
+      tags: [organization]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateActiveSiteNameRequest"
+      responses:
+        "200":
+          description: Nombre de la sede activa actualizado exitosamente.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/Idempotency-Replayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveSiteView"
+        "400":
+          $ref: "#/components/responses/I21ValidationFailed"
+        "401":
+          $ref: "#/components/responses/I21SessionRequired"
+        "403":
+          $ref: "#/components/responses/I21AccessDeniedOrCsrf"
+        "404":
+          $ref: "#/components/responses/OrganizationResourceNotFound"
+        "409":
+          $ref: "#/components/responses/OrganizationConflict"
+        "503":
+          $ref: "#/components/responses/I21ServiceUnavailable"
+
+  # -- EMPLOYEES (HU-07) -----------------------------------------------------
+  /employees:
+    get:
+      operationId: getEmployees
+      summary: Consultar colaboradores de la organización
+      description: |
+        Devuelve la lista de colaboradores registrados en la organización a la que
+        pertenece el usuario autenticado.
+
+        **Actor:** Usuario empresarial autenticado con rol `ADMINISTRADOR` o `SUPERVISOR`.
+        Usuarios con rol `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Aislamiento multi-tenant:** La organización se deriva exclusivamente de la sesión
+        activa en el servidor. Nunca se recibe `organizationId` por el cliente.
+
+        **Filtro por estado:** Mediante el parámetro opcional `active`:
+        - Si se omite: devuelve todos los colaboradores de la organización (activos e inactivos).
+        - `active=true`: solo colaboradores activos.
+        - `active=false`: solo colaboradores inactivos.
+        - Si se envía vacío, solo con espacios o con cualquier otro valor, responde `400 VALIDATION_FAILED`.
+      tags: [employees]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/EmployeeActiveQuery"
+      responses:
+        "200":
+          description: Lista de colaboradores obtenida con éxito. Si no existen colaboradores, devuelve un arreglo vacío `[]`.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EmployeeResponse"
+        "400":
+          $ref: "#/components/responses/I22ValidationFailed"
+        "401":
+          $ref: "#/components/responses/I22SessionRequired"
+        "403":
+          $ref: "#/components/responses/I22AccessDeniedOrCsrf"
+        "503":
+          $ref: "#/components/responses/I22ServiceUnavailable"
+
+    post:
+      operationId: createEmployee
+      summary: Registrar un nuevo colaborador
+      description: |
+        Registra un nuevo colaborador dentro de la organización del usuario autenticado.
+        El colaborador se vincula automáticamente a la sede activa única de la organización
+        y se inicializa en estado activo (`active: true`) con `lockVersion: 0`.
+
+        **Actor:** Requiere rol `ADMINISTRADOR`. Roles `SUPERVISOR` y `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad:** Requiere cookie de sesión activa y token CSRF en `X-CSRF-TOKEN`.
+        **Idempotencia:** Requiere cabecera `Idempotency-Key` (UUID). Ejecución coordinada
+        mediante `BusinessIdempotentOperationExecutor`. Replays deterministas devuelven
+        la respuesta original con la cabecera `Idempotency-Replayed: true`.
+
+        **Reglas de validación y de negocio:**
+        - `code`: obligatorio, alfanumérico con guiones (`^[A-Z0-9-]+$`), entre 2 y 32 caracteres.
+          Se normaliza a mayúsculas. Debe ser único dentro de la organización. Si ya existe,
+          responde `409 EMPLOYEE_CODE_ALREADY_EXISTS`.
+        - `displayName`: obligatorio, texto limpio de 1 a 100 caracteres.
+        - `positionId`: UUID obligatorio de un puesto de trabajo existente en la organización.
+          Si el puesto no existe, responde `404 POSITION_NOT_FOUND`.
+          Si el puesto existe pero se encuentra inactivo, responde `409 POSITION_INACTIVE`.
+        - Sede activa: la organización debe tener exactamente una sede activa. Si no existe,
+          responde `409 NO_ACTIVE_SITE`.
+        - Capacidad de licencia: la cantidad de colaboradores activos no puede superar el límite
+          contratado (`max_active_employees`). Si se supera, responde `409 EMPLOYEE_LICENSE_LIMIT_REACHED`.
+      tags: [employees]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEmployeeRequest"
+      responses:
+        "201":
+          description: Colaborador registrado exitosamente.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/Idempotency-Replayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeResponse"
+        "400":
+          $ref: "#/components/responses/I22ValidationFailed"
+        "401":
+          $ref: "#/components/responses/I22SessionRequired"
+        "403":
+          $ref: "#/components/responses/I22AccessDeniedOrCsrf"
+        "404":
+          $ref: "#/components/responses/PositionNotFound"
+        "409":
+          $ref: "#/components/responses/EmployeeCreationConflict"
+        "503":
+          $ref: "#/components/responses/I22ServiceUnavailable"
+
+  /employees/{employeeId}:
+    get:
+      operationId: getEmployee
+      summary: Consultar un colaborador por ID
+      description: |
+        Devuelve el detalle de un colaborador específico por su identificador único dentro
+        de la organización del usuario autenticado.
+
+        **Actor:** Usuario empresarial autenticado con rol `ADMINISTRADOR` o `SUPERVISOR`.
+        Usuarios con rol `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Aislamiento multi-tenant:** Si el colaborador existe en otra organización o no existe,
+        devuelve `404 EMPLOYEE_NOT_FOUND`.
+      tags: [employees]
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/EmployeeIdPath"
+      responses:
+        "200":
+          description: Detalle del colaborador obtenido con éxito.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeResponse"
+        "400":
+          $ref: "#/components/responses/I22ValidationFailed"
+        "401":
+          $ref: "#/components/responses/I22SessionRequired"
+        "403":
+          $ref: "#/components/responses/I22AccessDeniedOrCsrf"
+        "404":
+          $ref: "#/components/responses/EmployeeNotFound"
+        "503":
+          $ref: "#/components/responses/I22ServiceUnavailable"
+
+    patch:
+      operationId: updateEmployee
+      summary: Modificar datos de un colaborador
+      description: |
+        Modifica los campos mutables de un colaborador: `displayName`, `positionId` o ambos.
+        Los campos `code` y `siteId` son inmutables.
+
+        **Actor:** Requiere rol `ADMINISTRADOR`. Roles `SUPERVISOR` y `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad:** Requiere cookie de sesión activa y token CSRF en `X-CSRF-TOKEN`.
+        **Idempotencia:** Requiere cabecera `Idempotency-Key` (UUID). Replays deterministas retornan
+        `Idempotency-Replayed: true`.
+
+        **Control de concurrencia optimista:** Requiere `expectedLockVersion` (mayor o igual a 0).
+        Si la versión enviada no coincide con la versión actual en la base de datos,
+        la operación se rechaza con `409 CONCURRENT_MODIFICATION`.
+        Tras una modificación exitosa, el `lockVersion` del colaborador se incrementa en 1.
+
+        **Reglas de validación:**
+        - Al menos `displayName` o `positionId` debe estar presente en el cuerpo de la petición.
+        - Si se actualiza `displayName`, debe cumplir con longitud de 1 a 100 caracteres y formato limpio.
+        - Si se actualiza `positionId`, el nuevo puesto debe existir (`404 POSITION_NOT_FOUND`) y estar activo (`409 POSITION_INACTIVE`).
+      tags: [employees]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/EmployeeIdPath"
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEmployeeRequest"
+      responses:
+        "200":
+          description: Colaborador actualizado exitosamente.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/Idempotency-Replayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeResponse"
+        "400":
+          $ref: "#/components/responses/I22ValidationFailed"
+        "401":
+          $ref: "#/components/responses/I22SessionRequired"
+        "403":
+          $ref: "#/components/responses/I22AccessDeniedOrCsrf"
+        "404":
+          description: |
+            `404` — Colaborador o puesto no encontrado:
+            - `EMPLOYEE_NOT_FOUND`: el colaborador solicitado no existe o no pertenece a la organización.
+            - `POSITION_NOT_FOUND`: el puesto indicado en `positionId` no existe en la organización.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              examples:
+                employeeNotFound:
+                  summary: Colaborador no encontrado
+                  value:
+                    type: "/problems/employee-not-found"
+                    title: "Colaborador no encontrado"
+                    status: 404
+                    detail: "El colaborador solicitado no existe o no pertenece a la organización."
+                    code: "EMPLOYEE_NOT_FOUND"
+                    requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                    errors: []
+                positionNotFound:
+                  summary: Puesto no encontrado
+                  value:
+                    type: "/problems/position-not-found"
+                    title: "Puesto no encontrado"
+                    status: 404
+                    detail: "El puesto especificado no existe en la organización."
+                    code: "POSITION_NOT_FOUND"
+                    requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                    errors: []
+        "409":
+          $ref: "#/components/responses/EmployeeMutationConflict"
+        "503":
+          $ref: "#/components/responses/I22ServiceUnavailable"
+
+  /employees/{employeeId}/activate:
+    post:
+      operationId: activateEmployee
+      summary: Activar un colaborador
+      description: |
+        Pasa al colaborador al estado activo (`active: true`).
+        Si el colaborador ya se encuentra en estado activo, la operación es un no-op válido
+        y responde con éxito (`200 OK`) devolviendo la representación actual sin alterar el `lockVersion`.
+
+        **Actor:** Requiere rol `ADMINISTRADOR`. Roles `SUPERVISOR` y `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad:** Requiere cookie de sesión activa y token CSRF en `X-CSRF-TOKEN`.
+        **Idempotencia:** Requiere cabecera `Idempotency-Key` (UUID). Replays deterministas retornan
+        `Idempotency-Replayed: true`.
+
+        **Control de concurrencia optimista:** Requiere `expectedLockVersion` (mayor o igual a 0).
+        Si la versión enviada no coincide con la versión actual en la base de datos,
+        la operación se rechaza con `409 CONCURRENT_MODIFICATION`.
+        Tras una activación con transición de estado efectiva, el `lockVersion` se incrementa en 1.
+
+        **Capacidad de licencia:** Requiere adquirir el bloqueo de licencia a nivel de organización
+        y verificar que no se sobrepase el límite contratado (`max_active_employees`).
+        Si se sobrepasa, responde `409 EMPLOYEE_LICENSE_LIMIT_REACHED`.
+      tags: [employees]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/EmployeeIdPath"
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeEmployeeStatusRequest"
+      responses:
+        "200":
+          description: Colaborador activado exitosamente (o ya se encontraba activo).
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/Idempotency-Replayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeResponse"
+        "400":
+          $ref: "#/components/responses/I22ValidationFailed"
+        "401":
+          $ref: "#/components/responses/I22SessionRequired"
+        "403":
+          $ref: "#/components/responses/I22AccessDeniedOrCsrf"
+        "404":
+          $ref: "#/components/responses/EmployeeNotFound"
+        "409":
+          $ref: "#/components/responses/EmployeeActivateConflict"
+        "503":
+          $ref: "#/components/responses/I22ServiceUnavailable"
+
+  /employees/{employeeId}/deactivate:
+    post:
+      operationId: deactivateEmployee
+      summary: Desactivar un colaborador
+      description: |
+        Pasa al colaborador al estado inactivo (`active: false`).
+        Si el colaborador ya se encuentra en estado inactivo, la operación es un no-op válido
+        y responde con éxito (`200 OK`) devolviendo la representación actual sin alterar el `lockVersion`.
+
+        **Actor:** Requiere rol `ADMINISTRADOR`. Roles `SUPERVISOR` y `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad:** Requiere cookie de sesión activa y token CSRF en `X-CSRF-TOKEN`.
+        **Idempotencia:** Requiere cabecera `Idempotency-Key` (UUID). Replays deterministas retornan
+        `Idempotency-Replayed: true`.
+
+        **Control de concurrencia optimista:** Requiere `expectedLockVersion` (mayor o igual a 0).
+        Si la versión enviada no coincide con la versión actual en la base de datos,
+        la operación se rechaza con `409 CONCURRENT_MODIFICATION`.
+        Tras una desactivación con transición de estado efectiva, el `lockVersion` se incrementa en 1.
+      tags: [employees]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/EmployeeIdPath"
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeEmployeeStatusRequest"
+      responses:
+        "200":
+          description: Colaborador desactivado exitosamente (o ya se encontraba inactivo).
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/Idempotency-Replayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeResponse"
+        "400":
+          $ref: "#/components/responses/I22ValidationFailed"
+        "401":
+          $ref: "#/components/responses/I22SessionRequired"
+        "403":
+          $ref: "#/components/responses/I22AccessDeniedOrCsrf"
+        "404":
+          $ref: "#/components/responses/EmployeeNotFound"
+        "409":
+          $ref: "#/components/responses/EmployeeDeactivateConflict"
+        "503":
+          $ref: "#/components/responses/I22ServiceUnavailable"
+
+  /employees/{employeeId}/deactivation-preview:
+    post:
+      operationId: previewEmployeeDeactivation
+      summary: Evaluar precondiciones para desactivación de un colaborador
+      description: |
+        Evalúa si un colaborador puede ser desactivado de manera segura o si existen bloqueos
+        operativos o contractuales. No realiza ninguna mutación en la base de datos.
+
+        **Actor:** Requiere rol `ADMINISTRADOR`. Roles `SUPERVISOR` y `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad:** Requiere cookie de sesión activa y token CSRF en `X-CSRF-TOKEN`.
+        **Sin idempotencia:** Dado que es una operación de consulta y evaluación sin efectos
+        colaterales de negocio, no requiere ni admite cabecera `Idempotency-Key` ni cuerpo de petición.
+      tags: [employees]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/EmployeeIdPath"
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      responses:
+        "200":
+          description: Precondiciones de desactivación evaluadas exitosamente.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeactivationPreviewResponse"
+        "400":
+          $ref: "#/components/responses/I22ValidationFailed"
+        "401":
+          $ref: "#/components/responses/I22SessionRequired"
+        "403":
+          $ref: "#/components/responses/I22AccessDeniedOrCsrf"
+        "404":
+          $ref: "#/components/responses/EmployeeNotFound"
+        "503":
+          $ref: "#/components/responses/I22ServiceUnavailable"
+
+  # -- POLICIES (I2.3) -------------------------------------------------------
+  /policies/current:
+    get:
+      operationId: getCurrentPolicy
+      summary: Consultar la política operativa vigente de la organización
+      description: |
+        Devuelve la versión de política operativa actualmente vigente en la organización
+        del usuario autenticado. Si la organización aún no tiene ninguna versión configurada,
+        responde HTTP 200 con `{"policy": null}` (estado válido y conocido, no es un 404).
+
+        **Actor:** Usuario empresarial con rol `ADMINISTRADOR` o `SUPERVISOR`.
+        Roles `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Aislamiento multi-tenant:** La organización se deriva exclusivamente de la sesión
+        en el servidor.
+      tags: [policies]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Consulta exitosa de la política vigente.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentPolicyResponse"
+              examples:
+                withPolicy:
+                  summary: Con política vigente configurada
+                  value:
+                    policy:
+                      id: "c1f7b0a0-0000-0000-0000-000000000001"
+                      versionNumber: 1
+                      minimumRestMinutes: 660
+                      weeklyWarningMinutes: 2400
+                      effectiveAt: "2026-09-24T23:35:00.000Z"
+                      changeReason: "Configuración inicial de parámetros operativos para el piloto"
+                      createdByUserId: "a1f7b0a0-0000-0000-0000-000000000001"
+                noPolicy:
+                  summary: Sin política configurada aún
+                  value:
+                    policy: null
+        "401":
+          $ref: "#/components/responses/I23SessionRequired"
+        "403":
+          $ref: "#/components/responses/I23AccessDeniedOrCsrf"
+        "503":
+          $ref: "#/components/responses/I23ServiceUnavailable"
+
+  /policies/history:
+    get:
+      operationId: getPolicyHistory
+      summary: Consultar el historial de versiones de política operativa
+      description: |
+        Devuelve el historial completo de versiones de política operativa de la organización
+        en orden descendente determinista por `versionNumber` (la versión más reciente primero).
+        Si no existen versiones activadas, responde HTTP 200 con `{"items": []}`.
+
+        **Actor:** Usuario empresarial con rol `ADMINISTRADOR` o `SUPERVISOR`.
+        Roles `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Aislamiento multi-tenant:** La organización se deriva exclusivamente de la sesión
+        en el servidor.
+      tags: [policies]
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Historial de versiones obtenido exitosamente.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyHistoryResponse"
+              examples:
+                withHistory:
+                  summary: Con versiones en el historial
+                  value:
+                    items:
+                      - id: "c1f7b0a0-0000-0000-0000-000000000002"
+                        versionNumber: 2
+                        minimumRestMinutes: 720
+                        weeklyWarningMinutes: 2400
+                        effectiveAt: "2026-09-25T10:00:00.000Z"
+                        changeReason: "Ajuste de descanso mínimo a 12 horas"
+                        createdByUserId: "a1f7b0a0-0000-0000-0000-000000000001"
+                      - id: "c1f7b0a0-0000-0000-0000-000000000001"
+                        versionNumber: 1
+                        minimumRestMinutes: 660
+                        weeklyWarningMinutes: 2400
+                        effectiveAt: "2026-09-24T23:35:00.000Z"
+                        changeReason: "Configuración inicial de parámetros operativos para el piloto"
+                        createdByUserId: "a1f7b0a0-0000-0000-0000-000000000001"
+                emptyHistory:
+                  summary: Sin versiones activadas
+                  value:
+                    items: []
+        "401":
+          $ref: "#/components/responses/I23SessionRequired"
+        "403":
+          $ref: "#/components/responses/I23AccessDeniedOrCsrf"
+        "503":
+          $ref: "#/components/responses/I23ServiceUnavailable"
+
+  /policies/preview:
+    post:
+      operationId: previewPolicyChange
+      summary: Previsualizar propuesta de cambio de política operativa
+      description: |
+        Evalúa y previsualiza una propuesta de cambio de política sin persistir ninguna mutación.
+        Calcula la diferencia numérica (`delta`) respecto a la versión actual y genera la huella
+        canónica `validationFingerprint` requerida para la posterior activación.
+
+        **Actor:** Requiere rol `ADMINISTRADOR`. Roles `SUPERVISOR` y `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad:** Requiere cookie de sesión activa y token CSRF en cabecera `X-CSRF-TOKEN`.
+        Sin `Idempotency-Key` (es una evaluación sin efectos colaterales persistidos).
+
+        **Control de estado base:** El campo `expectedCurrentPolicyVersionId` es obligatorio.
+        Si la organización no tiene política previa, debe enviarse explícitamente `null`.
+        Si no coincide con la versión vigente en el momento de la evaluación, responde
+        `409 POLICY_CONCURRENT_MODIFICATION`.
+      tags: [policies]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyPreviewRequest"
+      responses:
+        "200":
+          description: Previsualización de la propuesta evaluada exitosamente.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyPreviewResponse"
+              examples:
+                initialConfig:
+                  summary: Previsualización para configuración inicial (sin política previa)
+                  value:
+                    currentPolicy: null
+                    proposedValues:
+                      minimumRestMinutes: 660
+                      weeklyWarningMinutes: 2400
+                    delta: null
+                    canProceed: true
+                    blockers: []
+                    warnings: []
+                    validationFingerprint: "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e"
+                    requirements:
+                      reasonRequired: true
+                updateConfig:
+                  summary: Previsualización de actualización de política vigente
+                  value:
+                    currentPolicy:
+                      id: "c1f7b0a0-0000-0000-0000-000000000001"
+                      versionNumber: 1
+                      minimumRestMinutes: 660
+                      weeklyWarningMinutes: 2400
+                      effectiveAt: "2026-09-24T23:35:00.000Z"
+                      changeReason: "Configuración inicial de parámetros operativos para el piloto"
+                      createdByUserId: "a1f7b0a0-0000-0000-0000-000000000001"
+                    proposedValues:
+                      minimumRestMinutes: 720
+                      weeklyWarningMinutes: 2400
+                    delta:
+                      minimumRestMinutesDelta: 60
+                      weeklyWarningMinutesDelta: 0
+                    canProceed: true
+                    blockers: []
+                    warnings: []
+                    validationFingerprint: "b602b7e51ca531515b122844d0c8c201e73d76ca1cdeb43c68c388e0be0f257f"
+                    requirements:
+                      reasonRequired: true
+        "400":
+          $ref: "#/components/responses/I23ValidationFailed"
+        "401":
+          $ref: "#/components/responses/I23SessionRequired"
+        "403":
+          $ref: "#/components/responses/I23AccessDeniedOrCsrf"
+        "409":
+          $ref: "#/components/responses/I23PolicyConcurrentModification"
+        "503":
+          $ref: "#/components/responses/I23ServiceUnavailable"
+
+  /policies/activate:
+    post:
+      operationId: activatePolicyVersion
+      summary: Activar una nueva versión de política operativa
+      description: |
+        Activa transaccionalmente una nueva versión de política operativa para la organización.
+        Aplica un candado exclusivo por organización (`sp_getapplock`) dentro de la transacción,
+        verifica la coincidencia estricta de `expectedCurrentPolicyVersionId` y valida que la
+        huella `validationFingerprint` corresponda exactamente a la propuesta.
+
+        La mutación es append-only: inserta una nueva fila en `planning_policy_versions` con el
+        siguiente `versionNumber` secuencial y actualiza de forma atómica el puntero
+        `organizations.current_policy_version_id` incrementando `lock_version`.
+
+        **Actor:** Requiere rol `ADMINISTRADOR`. Roles `SUPERVISOR` y `COLABORADOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad:** Requiere cookie de sesión activa y token CSRF en cabecera `X-CSRF-TOKEN`.
+
+        **Idempotencia:** Requiere cabecera `Idempotency-Key` (UUID). La respuesta es determinista;
+        replays devuelven el resultado persistido con la cabecera `Idempotency-Replayed: true`.
+
+        **Concurrencia y Bloqueo:**
+        - Si la versión vigente ya cambió respecto a `expectedCurrentPolicyVersionId`, responde `409 POLICY_CONCURRENT_MODIFICATION`.
+        - Si otra operación concurrente mantiene el candado de la organización, responde `503 POLICY_OPERATION_BUSY` con cabecera `Retry-After: 1`.
+      tags: [policies]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivatePolicyRequest"
+      responses:
+        "201":
+          description: |
+            Versión de política operativa activada exitosamente.
+            En la creación inicial responde 201 Created. Si la petición es una repetición
+            idempotente (replay determinista), se incluye la cabecera `Idempotency-Replayed: true`
+            (esta cabecera no se envía en la primera respuesta).
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/Idempotency-Replayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentPolicyResponse"
+              example:
+                policy:
+                  id: "c1f7b0a0-0000-0000-0000-000000000001"
+                  versionNumber: 1
+                  minimumRestMinutes: 660
+                  weeklyWarningMinutes: 2400
+                  effectiveAt: "2026-09-24T23:35:00.000Z"
+                  changeReason: "Configuración inicial de parámetros operativos para el piloto"
+                  createdByUserId: "a1f7b0a0-0000-0000-0000-000000000001"
+        "400":
+          $ref: "#/components/responses/I23PolicyActivateValidationFailed"
+        "401":
+          $ref: "#/components/responses/I23SessionRequired"
+        "403":
+          $ref: "#/components/responses/I23AccessDeniedOrCsrf"
+        "409":
+          $ref: "#/components/responses/I23PolicyActivateConflict"
+        "503":
+          $ref: "#/components/responses/I23PolicyServiceUnavailableOrBusy"
+
+  # -- UNAVAILABILITIES (HU-08 / I2.4) ---------------------------------------
+
+  /employees/{employeeId}/unavailabilities:
+    post:
+      operationId: createEmployeeUnavailability
+      summary: Registrar una indisponibilidad para un colaborador
+      description: |
+        Registra un periodo de indisponibilidad para el colaborador especificado dentro de la organización.
+        El nuevo registro se crea en estado activo (`cancelled: false`) con `lockVersion: 0`.
+
+        **Actor:** Requiere rol `ADMINISTRADOR` o `SUPERVISOR`. Roles `COLABORADOR` y `PLATFORM_OPERATOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad:** Requiere cookie de sesión activa (`TSESSIONID`) y token CSRF en `X-CSRF-TOKEN`.
+        **Idempotencia:** Requiere cabecera `Idempotency-Key` (UUID). Replays deterministas retornan `201 Created` con cabecera `Idempotency-Replayed: true`.
+
+        **Formatos temporales admitidos (mutuamente excluyentes):**
+        - **Rango parcial por horas:** instantes absolutos en UTC `startsAt` y `endsAt` (`startsAt < endsAt`).
+        - **Día completo (`allDay: true`):** fechas de calendario local `startDate` (inclusiva, YYYY-MM-DD) y `endDate` (exclusiva, YYYY-MM-DD), resueltas a instantes UTC absolutos usando la zona horaria oficial de la organización (`organizations.timezone_id`).
+        Mezclar formatos, omitir campos requeridos para el formato elegido o invertir la cronología responde `400 VALIDATION_FAILED`.
+
+        **Protección de periodos finalizados:**
+        No se permite registrar una indisponibilidad en un periodo que ya ha finalizado (`endsAt <= now`). Si `endsAt <= now`, la operación se rechaza con `400 PAST_INTERVAL_MODIFICATION_PROHIBITED`. Se permite registrar periodos en curso que hayan iniciado previamente siempre que su finalización sea futura (`endsAt > now`).
+
+        **Aislamiento multi-tenant:**
+        El colaborador debe existir y pertenecer a la organización de la sesión autenticada. En caso contrario, responde `404 EMPLOYEE_NOT_FOUND`.
+      tags: [unavailabilities]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/EmployeeIdPath"
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUnavailabilityRequest"
+      responses:
+        "201":
+          description: Indisponibilidad registrada exitosamente.
+          headers:
+            Location:
+              description: URI del recurso de indisponibilidad creado.
+              schema:
+                type: string
+                example: "/api/v1/unavailabilities/550e8400-e29b-41d4-a716-446655440030"
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/Idempotency-Replayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeUnavailabilityResponse"
+        "400":
+          $ref: "#/components/responses/UnavailabilityBadRequest"
+        "401":
+          $ref: "#/components/responses/I22SessionRequired"
+        "403":
+          $ref: "#/components/responses/I22AccessDeniedOrCsrf"
+        "404":
+          $ref: "#/components/responses/EmployeeNotFound"
+        "409":
+          $ref: "#/components/responses/UnavailabilityCreationConflict"
+        "503":
+          $ref: "#/components/responses/I22ServiceUnavailable"
+
+  /unavailabilities/{unavailabilityId}:
+    put:
+      operationId: updateUnavailability
+      summary: Modificar una indisponibilidad existente
+      description: |
+        Modifica el intervalo temporal, motivo o nota explicativa restringida de una indisponibilidad activa.
+        Tras una modificación exitosa, el `lockVersion` de la indisponibilidad se incrementa en 1.
+
+        **Actor:** Requiere rol `ADMINISTRADOR` o `SUPERVISOR`. Roles `COLABORADOR` y `PLATFORM_OPERATOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad:** Requiere cookie de sesión activa (`TSESSIONID`) y token CSRF en `X-CSRF-TOKEN`.
+        **Idempotencia:** Requiere cabecera `Idempotency-Key` (UUID). Replays deterministas retornan `200 OK` con cabecera `Idempotency-Replayed: true`.
+
+        **Control de concurrencia optimista:**
+        Requiere `expectedLockVersion` (entero mayor o igual a 0) en el cuerpo de la petición.
+        Si la versión enviada no coincide con la versión actual en la base de datos, la operación se rechaza con `409 CONCURRENT_MODIFICATION`.
+
+        **Formatos temporales admitidos (mutuamente excluyentes):**
+        - **Rango parcial por horas:** instantes absolutos en UTC `startsAt` y `endsAt` (`startsAt < endsAt`).
+        - **Día completo (`allDay: true`):** fechas de calendario local `startDate` (inclusiva, YYYY-MM-DD) y `endDate` (exclusiva, YYYY-MM-DD), resueltas a instantes UTC absolutos usando la zona horaria oficial de la organización (`organizations.timezone_id`).
+        Mezclar formatos, omitir campos requeridos o invertir la cronología responde `400 VALIDATION_FAILED`.
+
+        **Protección de periodos pasados o iniciados (RN-013):**
+        No se permite modificar una indisponibilidad si la existente ya ha iniciado (`startsAt <= now` o SQL Server `starts_at <= SYSUTCDATETIME()`) o si el nuevo intervalo inicia en el pasado (`newStartsAt <= now`). Responde `400 PAST_INTERVAL_MODIFICATION_PROHIBITED`.
+
+        **Estado cancelado:**
+        Si la indisponibilidad ya fue cancelada previamente, responde `409 UNAVAILABILITY_ALREADY_CANCELLED`.
+
+        **Aislamiento multi-tenant:**
+        Si la indisponibilidad no existe o no pertenece a la organización de la sesión autenticada, devuelve `404 UNAVAILABILITY_NOT_FOUND`.
+      tags: [unavailabilities]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/UnavailabilityIdPath"
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUnavailabilityRequest"
+      responses:
+        "200":
+          description: Indisponibilidad actualizada exitosamente.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/Idempotency-Replayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeUnavailabilityResponse"
+        "400":
+          $ref: "#/components/responses/UnavailabilityBadRequest"
+        "401":
+          $ref: "#/components/responses/I22SessionRequired"
+        "403":
+          $ref: "#/components/responses/I22AccessDeniedOrCsrf"
+        "404":
+          $ref: "#/components/responses/UnavailabilityNotFound"
+        "409":
+          $ref: "#/components/responses/UnavailabilityMutationConflict"
+        "503":
+          $ref: "#/components/responses/I22ServiceUnavailable"
+
+  /unavailabilities/{unavailabilityId}/cancel:
+    post:
+      operationId: cancelUnavailability
+      summary: Cancelar una indisponibilidad activa
+      description: |
+        Cancela lógicamente una indisponibilidad activa (`cancelled: true`), registrando el instante de cancelación (`cancelledAt`) y el usuario responsable (`cancelledByUserId`).
+        Tras una cancelación exitosa, el `lockVersion` de la indisponibilidad se incrementa en 1.
+
+        **Actor:** Requiere rol `ADMINISTRADOR` o `SUPERVISOR`. Roles `COLABORADOR` y `PLATFORM_OPERATOR` reciben `403 ACCESS_DENIED`.
+
+        **Seguridad:** Requiere cookie de sesión activa (`TSESSIONID`) y token CSRF en `X-CSRF-TOKEN`.
+        **Idempotencia:** Requiere cabecera `Idempotency-Key` (UUID). Replays deterministas retornan `200 OK` con cabecera `Idempotency-Replayed: true`.
+
+        **Control de concurrencia optimista:**
+        Requiere `expectedLockVersion` (entero mayor o igual a 0) en el cuerpo de la petición.
+        Si la versión enviada no coincide con la versión actual en la base de datos, la operación se rechaza con `409 CONCURRENT_MODIFICATION`.
+
+        **Protección de periodos pasados o iniciados (RN-013):**
+        No se permite cancelar una indisponibilidad si la existente ya ha iniciado (`startsAt <= now` o SQL Server `starts_at <= SYSUTCDATETIME()`). Responde `400 PAST_INTERVAL_MODIFICATION_PROHIBITED`.
+
+        **Estado cancelado:**
+        Si la indisponibilidad ya fue cancelada previamente, responde `409 UNAVAILABILITY_ALREADY_CANCELLED`.
+
+        **Aislamiento multi-tenant:**
+        Si la indisponibilidad no existe o pertenece a otra organización, devuelve `404 UNAVAILABILITY_NOT_FOUND`.
+      tags: [unavailabilities]
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/UnavailabilityIdPath"
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelUnavailabilityRequest"
+      responses:
+        "200":
+          description: Indisponibilidad cancelada exitosamente.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/Idempotency-Replayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeUnavailabilityResponse"
+        "400":
+          $ref: "#/components/responses/UnavailabilityBadRequest"
+        "401":
+          $ref: "#/components/responses/I22SessionRequired"
+        "403":
+          $ref: "#/components/responses/I22AccessDeniedOrCsrf"
+        "404":
+          $ref: "#/components/responses/UnavailabilityNotFound"
+        "409":
+          $ref: "#/components/responses/UnavailabilityMutationConflict"
+        "503":
+          $ref: "#/components/responses/I22ServiceUnavailable"
+
 # ---------------------------------------------------------------------------
 # Components
 # ---------------------------------------------------------------------------
@@ -721,13 +2218,12 @@ components:
     operatorSession:
       type: apiKey
       in: cookie
-      name: TSOP_SESSION
+      name: TSESSIONID
       description: |
-        **PROP-OP-01 — Pendiente de aprobación.**
-        Cookie de sesión del operador de plataforma. Entidad separada de `app_users`
-        (tabla `platform_operators`; Nota 07, §6.1).
-        El mecanismo exacto (sesión propia, API key restringida u otro) no está finalizado.
-        Ver `docs/api/README.md` §Mecanismo del operador.
+        Cookie de sesión del operador de plataforma (TSESSIONID).
+        Gestionada mediante la infraestructura compartida de Spring Session JDBC
+        y restringida exclusivamente a identidades de operador (tabla `platform_operators`)
+        con autoridad `ROLE_PLATFORM_OPERATOR`.
 
   # -- Headers ---------------------------------------------------------------
   headers:
@@ -745,6 +2241,14 @@ components:
       schema:
         type: boolean
         example: true
+
+    Retry-After:
+      description: |
+        Número de segundos que el cliente debe esperar antes de reintentar la petición.
+        Utilizado en respuestas `503 POLICY_OPERATION_BUSY`.
+      schema:
+        type: string
+        example: "1"
 
   # -- Parameters ------------------------------------------------------------
   parameters:
@@ -768,6 +2272,70 @@ components:
         type: string
         format: uuid
         example: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+
+    PositionIdPath:
+      name: positionId
+      in: path
+      required: true
+      description: Identificador único opaco (UUID) del puesto de trabajo.
+      schema:
+        type: string
+        format: uuid
+        example: "550e8400-e29b-41d4-a716-446655440010"
+
+    PositionActiveQuery:
+      name: active
+      in: query
+      required: false
+      description: |
+        Filtro por estado de activación del puesto de trabajo.
+        - Omitido: devuelve todos los puestos de la organización (activos e inactivos).
+        - `true`: solo puestos activos.
+        - `false`: solo puestos inactivos.
+        Si se envía vacío, solo con espacios o con cualquier otro valor, responde `400 VALIDATION_FAILED`.
+      schema:
+        type: string
+        enum:
+          - "true"
+          - "false"
+        example: "true"
+
+    EmployeeIdPath:
+      name: employeeId
+      in: path
+      required: true
+      description: Identificador único opaco (UUID) del colaborador.
+      schema:
+        type: string
+        format: uuid
+        example: "550e8400-e29b-41d4-a716-446655440020"
+
+    EmployeeActiveQuery:
+      name: active
+      in: query
+      required: false
+      description: |
+        Filtro por estado de activación del colaborador.
+        - Omitido: devuelve todos los colaboradores de la organización (activos e inactivos).
+        - `true`: solo colaboradores activos.
+        - `false`: solo colaboradores inactivos.
+        Si se envía vacío, solo con espacios o con cualquier otro valor, responde `400 VALIDATION_FAILED`.
+      schema:
+        type: string
+        enum:
+          - "true"
+          - "false"
+        example: "true"
+
+    UnavailabilityIdPath:
+      name: unavailabilityId
+      in: path
+      required: true
+      description: Identificador único opaco (UUID) de la indisponibilidad.
+      schema:
+        type: string
+        format: uuid
+        example: "550e8400-e29b-41d4-a716-446655440030"
 
   # -- Schemas ---------------------------------------------------------------
   schemas:
@@ -865,6 +2433,48 @@ components:
           description: Contraseña actual. No se registra.
           # TODO: DEC-08 — definir longitud mínima/máxima.
           minLength: 1
+
+    # OPERATOR AUTH & SESSION ------------------------------------------------
+    OperatorLoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Dirección de correo electrónico del operador de plataforma.
+          example: "operador@turnoshift.example"
+        password:
+          type: string
+          format: password
+          description: Contraseña del operador de plataforma. No se registra.
+          minLength: 1
+
+    OperatorSessionResponse:
+      type: object
+      required: [operator, landingPage]
+      description: Identidad y contexto de la sesión activa del operador de plataforma.
+      properties:
+        operator:
+          $ref: "#/components/schemas/OperatorSessionData"
+        landingPage:
+          type: string
+          description: Ruta sugerida para el operador en la herramienta de plataforma.
+          example: "/operator/inicio"
+
+    OperatorSessionData:
+      type: object
+      required: [id, displayName]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identificador opaco del operador de plataforma.
+          example: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+        displayName:
+          type: string
+          description: Nombre visible del operador de plataforma.
+          example: "Operador Principal"
 
     # ONBOARDING (operador) --------------------------------------------------
     IncorporateOrganizationRequest:
@@ -1102,6 +2712,826 @@ components:
             # TODO: DEC-08 — definir longitud mínima/máxima y reglas de complejidad.
           minLength: 1
 
+    # POSITIONS (HU-06) ------------------------------------------------------
+    PositionResponse:
+      type: object
+      required: [id, code, name, isActive, lockVersion, createdAt, updatedAt]
+      description: Representación completa de un puesto de trabajo en la organización.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identificador único opaco del puesto.
+          example: "550e8400-e29b-41d4-a716-446655440010"
+        code:
+          type: string
+          description: Código único del puesto dentro de la organización. Inmutable tras la creación.
+          example: "MED-URG"
+          pattern: "^[A-Z0-9-]+$"
+          minLength: 2
+          maxLength: 32
+        name:
+          type: string
+          description: Nombre descriptivo del puesto de trabajo.
+          example: "Médico de Urgencias"
+          minLength: 1
+          maxLength: 100
+        isActive:
+          type: boolean
+          description: Estado de activación del puesto para asignación y planificación operativa.
+          example: true
+        lockVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Versión de control de concurrencia optimista del puesto.
+          example: 0
+        createdAt:
+          type: string
+          format: date-time
+          description: Marca temporal UTC de creación del registro.
+          example: "2026-09-16T12:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Marca temporal UTC de la última modificación del registro.
+          example: "2026-09-16T12:00:00Z"
+
+    CreatePositionRequest:
+      type: object
+      required: [code, name]
+      description: Datos para registrar un nuevo puesto de trabajo en la organización.
+      properties:
+        code:
+          type: string
+          description: |
+            Código único del puesto dentro de la organización.
+            Solo admite letras mayúsculas, dígitos y guiones (`^[A-Z0-9-]+$`).
+            Longitud entre 2 y 32 caracteres. Inmutable.
+          example: "MED-URG"
+          pattern: "^[A-Z0-9-]+$"
+          minLength: 2
+          maxLength: 32
+        name:
+          type: string
+          description: |
+            Nombre descriptivo del puesto de trabajo.
+            Longitud máxima 100 caracteres.
+          example: "Médico de Urgencias"
+          minLength: 1
+          maxLength: 100
+
+    UpdatePositionRequest:
+      type: object
+      required: [name, expectedLockVersion]
+      description: Datos para actualizar el nombre de un puesto de trabajo existente.
+      properties:
+        name:
+          type: string
+          description: |
+            Nuevo nombre descriptivo del puesto de trabajo.
+            Longitud máxima 100 caracteres.
+          example: "Médico de Urgencias y Emergencias"
+          minLength: 1
+          maxLength: 100
+        expectedLockVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Versión esperada del registro (`lockVersion`) para control de concurrencia optimista.
+          example: 0
+
+    ChangePositionStatusRequest:
+      type: object
+      required: [isActive, expectedLockVersion]
+      description: Datos para cambiar el estado de activación de un puesto de trabajo.
+      properties:
+        isActive:
+          type: boolean
+          description: Nuevo estado de activación deseado (`true` = activo, `false` = inactivo).
+          example: false
+        expectedLockVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Versión esperada del registro (`lockVersion`) para control de concurrencia optimista.
+          example: 0
+
+    # ORGANIZATION & ACTIVE SITE CONFIGURATION (HU-05) -----------------------
+    OrganizationConfigurationResponse:
+      type: object
+      required: [organization, activeSite]
+      description: Configuración general de la organización y su sede única activa.
+      properties:
+        organization:
+          $ref: "#/components/schemas/OrganizationView"
+        activeSite:
+          $ref: "#/components/schemas/ActiveSiteView"
+
+    OrganizationView:
+      type: object
+      required: [id, displayName, timezoneId, lockVersion]
+      description: |
+        Vista de lectura de la configuración de la organización.
+        `timezoneId` es de solo lectura en I2.1 para contextualizar operaciones;
+        no se permite su edición.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identificador único de la organización.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        displayName:
+          type: string
+          description: Nombre visible de la organización. Máximo 150 caracteres.
+          example: "Hospital San Martín"
+          minLength: 1
+          maxLength: 150
+        timezoneId:
+          type: string
+          description: |
+            Identificador IANA de la zona horaria de la organización (solo lectura).
+          example: "America/Bogota"
+        lockVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Versión de control de concurrencia optimista de la organización.
+          example: 2
+
+    ActiveSiteView:
+      type: object
+      required: [id, code, name, lockVersion]
+      description: Vista de lectura de la sede activa única de la organización.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identificador único de la sede activa.
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        code:
+          type: string
+          description: Código inmutable de la sede activa.
+          example: "SEDE-CENTRAL"
+        name:
+          type: string
+          description: Nombre descriptivo de la sede activa. Máximo 150 caracteres.
+          example: "Sede Principal"
+          minLength: 1
+          maxLength: 150
+        lockVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Versión de control de concurrencia optimista de la sede.
+          example: 1
+
+    UpdateOrganizationDisplayNameRequest:
+      type: object
+      required: [displayName, expectedLockVersion]
+      description: Petición para actualizar el nombre visible de la organización.
+      properties:
+        displayName:
+          type: string
+          description: Nuevo nombre visible de la organización. Máximo 150 caracteres.
+          example: "Hospital San Martín Principal"
+          minLength: 1
+          maxLength: 150
+        expectedLockVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Versión esperada (`lockVersion`) de la organización para control de concurrencia.
+          example: 2
+
+    UpdateActiveSiteNameRequest:
+      type: object
+      required: [name, expectedLockVersion]
+      description: Petición para actualizar el nombre de la sede activa única.
+      properties:
+        name:
+          type: string
+          description: Nuevo nombre descriptivo de la sede activa. Máximo 150 caracteres.
+          example: "Sede Principal Central"
+          minLength: 1
+          maxLength: 150
+        expectedLockVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Versión esperada (`lockVersion`) de la sede activa para control de concurrencia.
+          example: 1
+
+    # EMPLOYEES (HU-07) ------------------------------------------------------
+    EmployeeResponse:
+      type: object
+      required: [id, code, displayName, positionId, siteId, active, lockVersion]
+      description: |
+        Representación completa de un colaborador en la organización.
+        No contiene credenciales de cuenta, datos de autenticación ni linkedUserId.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identificador único opaco del colaborador.
+          example: "550e8400-e29b-41d4-a716-446655440020"
+        code:
+          type: string
+          description: Código único del colaborador dentro de la organización. Inmutable tras la creación.
+          example: "EMP-001"
+          pattern: "^[A-Z0-9-]+$"
+          minLength: 2
+          maxLength: 32
+        displayName:
+          type: string
+          description: Nombre visible o completo del colaborador.
+          example: "Carlos Mendoza"
+          minLength: 1
+          maxLength: 100
+        positionId:
+          type: string
+          format: uuid
+          description: Identificador del puesto de trabajo asignado al colaborador.
+          example: "550e8400-e29b-41d4-a716-446655440010"
+        siteId:
+          type: string
+          format: uuid
+          description: Identificador de la sede asignada al colaborador.
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        active:
+          type: boolean
+          description: Estado de activación del colaborador para turnos y planificación.
+          example: true
+        lockVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Versión de control de concurrencia optimista del colaborador.
+          example: 0
+
+    CreateEmployeeRequest:
+      type: object
+      required: [code, displayName, positionId]
+      description: Datos requeridos para registrar un nuevo colaborador en la organización.
+      properties:
+        code:
+          type: string
+          description: |
+            Código único del colaborador en la organización. Se normaliza a mayúsculas y sin espacios extremos.
+          example: "EMP-001"
+          pattern: "^[A-Z0-9-]+$"
+          minLength: 2
+          maxLength: 32
+        displayName:
+          type: string
+          description: Nombre visible del colaborador. Texto limpio sin espacios sobrantes.
+          example: "Carlos Mendoza"
+          minLength: 1
+          maxLength: 100
+        positionId:
+          type: string
+          format: uuid
+          description: Identificador del puesto de trabajo a asignar (debe existir y estar activo).
+          example: "550e8400-e29b-41d4-a716-446655440010"
+
+    UpdateEmployeeRequest:
+      type: object
+      required: [expectedLockVersion]
+      description: |
+        Datos para actualizar los campos mutables de un colaborador.
+        Se debe especificar al menos `displayName` o `positionId`.
+        `code` y `siteId` son inmutables tras la creación.
+      properties:
+        displayName:
+          type: string
+          description: Nuevo nombre visible del colaborador. Texto limpio sin espacios sobrantes.
+          example: "Carlos Mendoza Actualizado"
+          minLength: 1
+          maxLength: 100
+        positionId:
+          type: string
+          format: uuid
+          description: Nuevo puesto de trabajo a asignar (debe existir y estar activo).
+          example: "550e8400-e29b-41d4-a716-446655440010"
+        expectedLockVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Versión actual esperada del colaborador para control de concurrencia optimista.
+          example: 0
+
+    ChangeEmployeeStatusRequest:
+      type: object
+      required: [expectedLockVersion]
+      description: Solicitud para cambiar el estado de activación de un colaborador.
+      properties:
+        expectedLockVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Versión esperada del colaborador para control de concurrencia optimista.
+          example: 0
+
+    DeactivationPreviewResponse:
+      type: object
+      required: [employeeId, displayName, canDeactivate, blockers]
+      description: Resultado de la evaluación previa de precondiciones para desactivar a un colaborador.
+      properties:
+        employeeId:
+          type: string
+          format: uuid
+          description: Identificador del colaborador evaluado.
+          example: "550e8400-e29b-41d4-a716-446655440020"
+        displayName:
+          type: string
+          description: Nombre visible del colaborador evaluado.
+          example: "Carlos Mendoza"
+        canDeactivate:
+          type: boolean
+          description: Indica si el colaborador puede ser desactivado sin impedimentos operativos.
+          example: true
+        blockers:
+          type: array
+          description: Lista de motivos o impedimentos que bloquean la desactivación (vacío si canDeactivate es true).
+          items:
+            type: string
+          example: []
+
+    # POLICIES (I2.3) --------------------------------------------------------
+    PolicyResponse:
+      type: object
+      required:
+        - id
+        - versionNumber
+        - minimumRestMinutes
+        - weeklyWarningMinutes
+        - effectiveAt
+        - changeReason
+        - createdByUserId
+      description: Representación inmutable de una versión de política operativa.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identificador único de la versión de política.
+          example: "c1f7b0a0-0000-0000-0000-000000000001"
+        versionNumber:
+          type: integer
+          minimum: 1
+          description: Número secuencial de la versión de política dentro de la organización.
+          example: 1
+        minimumRestMinutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          description: Tiempo mínimo de descanso entre turnos en minutos (1 a 1440 min / 24 horas).
+          example: 660
+        weeklyWarningMinutes:
+          type: integer
+          minimum: 1
+          maximum: 10080
+          description: Umbral de advertencia semanal de jornada en minutos (1 a 10080 min / 7 días).
+          example: 2400
+        effectiveAt:
+          type: string
+          format: date-time
+          description: Fecha y hora en UTC en que entró en vigencia la versión.
+          example: "2026-09-24T23:35:00.000Z"
+        changeReason:
+          type: string
+          maxLength: 500
+          description: Motivo documentado del cambio o configuración inicial de la política.
+          example: "Configuración inicial de parámetros operativos para el piloto"
+        createdByUserId:
+          type: string
+          format: uuid
+          description: Identificador del usuario que activó esta versión.
+          example: "a1f7b0a0-0000-0000-0000-000000000001"
+
+    CurrentPolicyResponse:
+      type: object
+      required: [policy]
+      description: Contenedor de la política operativa vigente en la organización.
+      properties:
+        policy:
+          anyOf:
+            - $ref: "#/components/schemas/PolicyResponse"
+            - type: "null"
+          description: |
+            Versión de política operativa actualmente vigente en la organización.
+            Es `null` si la organización no tiene ninguna versión configurada aún.
+
+    PolicyHistoryResponse:
+      type: object
+      required: [items]
+      description: Listado histórico de versiones de política de la organización.
+      properties:
+        items:
+          type: array
+          description: Versiones de política ordenadas descendentemente por versionNumber.
+          items:
+            $ref: "#/components/schemas/PolicyResponse"
+
+    ProposedValuesDto:
+      type: object
+      required:
+        - minimumRestMinutes
+        - weeklyWarningMinutes
+      description: Valores de umbrales operativos propuestos en la previsualización.
+      properties:
+        minimumRestMinutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          description: Tiempo mínimo de descanso propuesto en minutos (1 a 1440).
+          example: 660
+        weeklyWarningMinutes:
+          type: integer
+          minimum: 1
+          maximum: 10080
+          description: Umbral semanal de advertencia propuesto en minutos (1 a 10080).
+          example: 2400
+
+    PolicyDeltaDto:
+      type: object
+      required:
+        - minimumRestMinutesDelta
+        - weeklyWarningMinutesDelta
+      description: Diferencia numérica en minutos entre los valores propuestos y la política vigente.
+      properties:
+        minimumRestMinutesDelta:
+          type: integer
+          description: Diferencia en minutos respecto al descanso mínimo de la política vigente.
+          example: 60
+        weeklyWarningMinutesDelta:
+          type: integer
+          description: Diferencia en minutos respecto al aviso semanal de la política vigente.
+          example: -120
+
+    PolicyRequirementsDto:
+      type: object
+      required:
+        - reasonRequired
+      description: Requisitos previos determinados para habilitar la activación de la propuesta.
+      properties:
+        reasonRequired:
+          type: boolean
+          description: Indica si se exige obligatoriamente un motivo para activar la propuesta.
+          example: true
+
+    PolicyPreviewRequest:
+      type: object
+      required:
+        - expectedCurrentPolicyVersionId
+        - minimumRestMinutes
+        - weeklyWarningMinutes
+      description: Datos de entrada para evaluar y previsualizar una propuesta de política.
+      properties:
+        expectedCurrentPolicyVersionId:
+          anyOf:
+            - type: string
+              format: uuid
+            - type: "null"
+          description: |
+            Identificador de la versión actual que se espera reemplazar.
+            Propiedad obligatoria: enviar explícitamente `null` si no existe política previa.
+          example: null
+        minimumRestMinutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          description: Tiempo mínimo de descanso entre turnos propuesto en minutos (1 a 1440).
+          example: 660
+        weeklyWarningMinutes:
+          type: integer
+          minimum: 1
+          maximum: 10080
+          description: Umbral de advertencia semanal de jornada propuesto en minutos (1 a 10080).
+          example: 2400
+
+    PolicyPreviewResponse:
+      type: object
+      required:
+        - currentPolicy
+        - proposedValues
+        - delta
+        - canProceed
+        - blockers
+        - warnings
+        - validationFingerprint
+        - requirements
+      description: Resultado del análisis y previsualización de una propuesta de política operativa.
+      properties:
+        currentPolicy:
+          anyOf:
+            - $ref: "#/components/schemas/PolicyResponse"
+            - type: "null"
+          description: Política operativa vigente al momento de evaluar, o `null` si no existe.
+        proposedValues:
+          $ref: "#/components/schemas/ProposedValuesDto"
+        delta:
+          anyOf:
+            - $ref: "#/components/schemas/PolicyDeltaDto"
+            - type: "null"
+          description: Diferencia aritmética con la versión vigente, o `null` si no existe política previa.
+        canProceed:
+          type: boolean
+          description: Indica si la propuesta puede activarse sin impedimentos bloqueantes.
+          example: true
+        blockers:
+          type: array
+          description: Lista de motivos o impedimentos que bloquean la activación.
+          items:
+            type: string
+          example: []
+        warnings:
+          type: array
+          description: Lista de advertencias informativas no bloqueantes.
+          items:
+            type: string
+          example: []
+        validationFingerprint:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: Huella canónica SHA-256 (64 caracteres hexadecimales en minúsculas).
+          example: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        requirements:
+          $ref: "#/components/schemas/PolicyRequirementsDto"
+
+    ActivatePolicyRequest:
+      type: object
+      required:
+        - expectedCurrentPolicyVersionId
+        - minimumRestMinutes
+        - weeklyWarningMinutes
+        - reason
+        - validationFingerprint
+      description: Datos de entrada para activar una nueva versión de política operativa.
+      properties:
+        expectedCurrentPolicyVersionId:
+          anyOf:
+            - type: string
+              format: uuid
+            - type: "null"
+          description: |
+            Identificador de la versión actual que se espera reemplazar.
+            Propiedad obligatoria: enviar explícitamente `null` si no existe política previa.
+          example: null
+        minimumRestMinutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          description: Tiempo mínimo de descanso entre turnos en minutos (1 a 1440).
+          example: 660
+        weeklyWarningMinutes:
+          type: integer
+          minimum: 1
+          maximum: 10080
+          description: Umbral de advertencia semanal de jornada en minutos (1 a 10080).
+          example: 2400
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: |
+            Motivo justificado de la activación de la política. No puede estar vacío ni compuesto
+            únicamente de espacios en blanco. Máximo 500 caracteres.
+          example: "Configuración inicial de parámetros operativos para el piloto"
+        validationFingerprint:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: |
+            Huella de validación canónica en SHA-256 (64 caracteres hexadecimales en minúsculas).
+            Debe coincidir exactamente con el estado actual esperado y los umbrales propuestos.
+          example: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+    # UNAVAILABILITIES (HU-08 / I2.4) ----------------------------------------
+    CreateUnavailabilityRequest:
+      type: object
+      description: |
+        Cuerpo de petición para registrar una nueva indisponibilidad de colaborador.
+        Requiere definir el intervalo mediante uno de dos formatos mutuamente excluyentes:
+        - Rango parcial por horas: `startsAt` y `endsAt` como instantes UTC (ISO-8601).
+        - Rango de día completo: `allDay: true`, `startDate` (inclusiva, YYYY-MM-DD) y `endDate` (exclusiva, YYYY-MM-DD).
+      properties:
+        startsAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Instante de inicio en UTC (ISO-8601). Requerido en formato de rango parcial.
+          example: "2026-10-15T14:00:00.000Z"
+        endsAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Instante de fin en UTC (ISO-8601). Requerido en formato de rango parcial. Debe ser posterior a `startsAt`.
+          example: "2026-10-15T18:00:00.000Z"
+        allDay:
+          type:
+            - boolean
+            - "null"
+          description: Indicador de día completo. Debe ser `true` en formato de rango por fechas locales.
+          example: true
+        startDate:
+          type:
+            - string
+            - "null"
+          format: date
+          description: Fecha local de inicio inclusiva (YYYY-MM-DD). Requerida en formato de día completo.
+          example: "2026-10-15"
+        endDate:
+          type:
+            - string
+            - "null"
+          format: date
+          description: Fecha local de fin exclusiva (YYYY-MM-DD). Requerida en formato de día completo. Debe ser posterior a `startDate`.
+          example: "2026-10-16"
+        reasonCode:
+          anyOf:
+            - $ref: "#/components/schemas/UnavailabilityReason"
+            - type: "null"
+          description: Motivo opcional del catálogo predefinido (`UnavailabilityReason`).
+          example: VACACIONES
+        restrictedNote:
+          type:
+            - string
+            - "null"
+          maxLength: 500
+          description: |
+            Nota restringida explicativa opcional (máximo 500 unidades UTF-16).
+            No se permite texto compuesto exclusivamente por espacios en blanco o separadores Unicode.
+          example: "Permiso por cita médica"
+
+    UpdateUnavailabilityRequest:
+      type: object
+      required:
+        - expectedLockVersion
+      description: |
+        Cuerpo de petición para modificar una indisponibilidad existente.
+        Requiere definir el intervalo mediante uno de dos formatos mutuamente excluyentes:
+        - Rango parcial por horas: `startsAt` y `endsAt` como instantes UTC (ISO-8601).
+        - Rango de día completo: `allDay: true`, `startDate` (inclusiva, YYYY-MM-DD) y `endDate` (exclusiva, YYYY-MM-DD).
+      properties:
+        startsAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Instante de inicio en UTC (ISO-8601). Requerido en formato de rango parcial.
+          example: "2026-10-15T14:00:00.000Z"
+        endsAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Instante de fin en UTC (ISO-8601). Requerido en formato de rango parcial. Debe ser posterior a `startsAt`.
+          example: "2026-10-15T18:00:00.000Z"
+        allDay:
+          type:
+            - boolean
+            - "null"
+          description: Indicador de día completo. Debe ser `true` en formato de rango por fechas locales.
+          example: true
+        startDate:
+          type:
+            - string
+            - "null"
+          format: date
+          description: Fecha local de inicio inclusiva (YYYY-MM-DD). Requerida en formato de día completo.
+          example: "2026-10-15"
+        endDate:
+          type:
+            - string
+            - "null"
+          format: date
+          description: Fecha local de fin exclusiva (YYYY-MM-DD). Requerida en formato de día completo. Debe ser posterior a `startDate`.
+          example: "2026-10-16"
+        reasonCode:
+          anyOf:
+            - $ref: "#/components/schemas/UnavailabilityReason"
+            - type: "null"
+          description: Motivo opcional del catálogo predefinido (`UnavailabilityReason`).
+          example: VACACIONES
+        restrictedNote:
+          type:
+            - string
+            - "null"
+          maxLength: 500
+          description: |
+            Nota restringida explicativa opcional (máximo 500 unidades UTF-16).
+            No se permite texto compuesto exclusivamente por espacios en blanco o separadores Unicode.
+          example: "Permiso reprogramado por cita médica"
+        expectedLockVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Versión esperada (`lockVersion`) del registro para control de concurrencia optimista.
+          example: 0
+
+    CancelUnavailabilityRequest:
+      type: object
+      required:
+        - expectedLockVersion
+      description: Cuerpo de petición para cancelar una indisponibilidad activa.
+      properties:
+        expectedLockVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Versión esperada (`lockVersion`) del registro para control de concurrencia optimista.
+          example: 0
+
+    EmployeeUnavailabilityResponse:
+      type: object
+      required:
+        - id
+        - employeeId
+        - startsAt
+        - endsAt
+        - cancelled
+        - createdByUserId
+        - lockVersion
+        - createdAt
+        - updatedAt
+      description: Representación completa de un periodo de indisponibilidad de un colaborador.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identificador único opaco de la indisponibilidad.
+          example: "550e8400-e29b-41d4-a716-446655440030"
+        employeeId:
+          type: string
+          format: uuid
+          description: Identificador del colaborador al que corresponde la indisponibilidad.
+          example: "550e8400-e29b-41d4-a716-446655440020"
+        startsAt:
+          type: string
+          format: date-time
+          description: Instante de inicio en UTC (ISO-8601).
+          example: "2026-10-15T14:00:00.000Z"
+        endsAt:
+          type: string
+          format: date-time
+          description: Instante de fin en UTC (ISO-8601).
+          example: "2026-10-15T18:00:00.000Z"
+        reasonCode:
+          anyOf:
+            - $ref: "#/components/schemas/UnavailabilityReason"
+            - type: "null"
+          description: Motivo categorizado de la indisponibilidad, o `null` si no se especificó.
+          example: VACACIONES
+        restrictedNote:
+          type:
+            - string
+            - "null"
+          maxLength: 500
+          description: Nota restringida de contexto, o `null` si no se especificó.
+          example: "Permiso por cita médica"
+        cancelled:
+          type: boolean
+          description: Indica si la indisponibilidad ha sido cancelada.
+          example: false
+        cancelledAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Fecha y hora en UTC en que se canceló la indisponibilidad, o `null` si permanece activa.
+          example: null
+        cancelledByUserId:
+          type:
+            - string
+            - "null"
+          format: uuid
+          description: Identificador del usuario que canceló la indisponibilidad, o `null` si permanece activa.
+          example: null
+        createdByUserId:
+          type: string
+          format: uuid
+          description: Identificador del usuario que registró la indisponibilidad.
+          example: "a1f7b0a0-0000-0000-0000-000000000001"
+        lockVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Versión de control de concurrencia optimista del registro.
+          example: 0
+        createdAt:
+          type: string
+          format: date-time
+          description: Fecha y hora de creación del registro en UTC.
+          example: "2026-09-25T10:00:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Fecha y hora de última modificación del registro en UTC.
+          example: "2026-09-25T10:00:00.000Z"
+
     # ENUMERATIONS -----------------------------------------------------------
     UserRole:
       type: string
@@ -1122,12 +3552,29 @@ components:
       type: string
       description: |
         Propósito del enlace de configuración:
-        - `INITIAL_SETUP`: primera configuración (administrador inicial).
-        - `PASSWORD_RESET`: recuperación posterior (HU-04.2, fuera de este contrato parcial).
+        - `INITIAL_SETUP`: primera configuración (administrador inicial). Es el único propósito habilitado en esta versión.
+        - `PASSWORD_RESET`: recuperación posterior (HU-04.2). Capacidad futura reservada en el esquema/enumeración, no habilitada actualmente.
       enum:
         - INITIAL_SETUP
         - PASSWORD_RESET
       example: INITIAL_SETUP
+
+    UnavailabilityReason:
+      type: string
+      description: |
+        Catálogo predefinido de motivos de indisponibilidad.
+        - `VACACIONES`: Periodo vacacional.
+        - `PERMISO_PERSONAL`: Permiso de índole personal o familiar.
+        - `MEDICO`: Cita o incapacidad médica.
+        - `FORMACION`: Actividad formativa o de desarrollo profesional.
+        - `OTRO`: Otros motivos justificados.
+      enum:
+        - VACACIONES
+        - PERMISO_PERSONAL
+        - MEDICO
+        - FORMACION
+        - OTRO
+      example: VACACIONES
 
     # ERRORS (Problem Details, RFC 9457) -------------------------------------
     ProblemDetail:
@@ -1211,6 +3658,26 @@ components:
             status: 401
             detail: "No existe sesión activa. Inicia sesión para continuar."
             code: "SESSION_REQUIRED"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []
+
+    AuthenticationFailed:
+      description: |
+        `401 AUTHENTICATION_FAILED` — Credenciales incorrectas, cuenta/operador inactivo
+        o sin credencial configurada. El mensaje no revela la causa específica.
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/X-Request-ID"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/authentication-failed"
+            title: "Autenticación fallida"
+            status: 401
+            detail: "Las credenciales son incorrectas o la cuenta no puede iniciar sesión."
+            code: "AUTHENTICATION_FAILED"
             requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
             errors: []
 
@@ -1299,6 +3766,10 @@ components:
       headers:
         X-Request-ID:
           $ref: "#/components/headers/X-Request-ID"
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
       content:
         application/problem+json:
           schema:
@@ -1307,10 +3778,199 @@ components:
             type: "/problems/resource-not-found"
             title: "Recurso no encontrado"
             status: 404
-            detail: "El recurso solicitado no existe o no está disponible."
+            detail: "El recurso solicitado no existe o no pertenece a la organización."
             code: "RESOURCE_NOT_FOUND"
             requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
             errors: []
+
+    OrganizationResourceNotFound:
+      description: |
+        `404 RESOURCE_NOT_FOUND` — La organización o sede solicitada no existe o no pertenece a este contexto.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/resource-not-found"
+            title: "Recurso no encontrado"
+            status: 404
+            detail: "El recurso solicitado no existe o no pertenece a la organización."
+            code: "RESOURCE_NOT_FOUND"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []
+
+    PositionNotFound:
+      description: |
+        `404 POSITION_NOT_FOUND` — El puesto solicitado no existe o no pertenece a la organización.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/position-not-found"
+            title: "Puesto no encontrado"
+            status: 404
+            detail: "El puesto solicitado no existe o no pertenece a la organización."
+            code: "POSITION_NOT_FOUND"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []
+
+    PositionCreationConflict:
+      description: |
+        `409` — Conflicto durante la creación de puesto o en la clave de idempotencia:
+        - `POSITION_CODE_ALREADY_EXISTS`: el código de puesto ya existe en la organización.
+        - `IDEMPOTENCY_KEY_REUSED`: la clave de idempotencia fue reutilizada con una petición diferente.
+        - `IDEMPOTENCY_KEY_EXPIRED`: la clave de idempotencia ha expirado.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+        Idempotency-Replayed:
+          $ref: "#/components/headers/Idempotency-Replayed"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            positionCodeAlreadyExists:
+              summary: Código de puesto duplicado
+              value:
+                type: "/problems/position-code-already-exists"
+                title: "Código de puesto duplicado"
+                status: 409
+                detail: "El código de puesto ya existe en la organización."
+                code: "POSITION_CODE_ALREADY_EXISTS"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyReused:
+              summary: Clave de idempotencia reutilizada
+              value:
+                type: "/problems/idempotency-key-reused"
+                title: "Clave de idempotencia reutilizada"
+                status: 409
+                detail: "La clave de idempotencia ya fue utilizada con una petición diferente."
+                code: "IDEMPOTENCY_KEY_REUSED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyExpired:
+              summary: Clave de idempotencia expirada
+              value:
+                type: "/problems/idempotency-key-expired"
+                title: "Clave de idempotencia expirada"
+                status: 409
+                detail: "La clave de idempotencia ha expirado."
+                code: "IDEMPOTENCY_KEY_EXPIRED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    PositionMutationConflict:
+      description: |
+        `409` — Conflicto de versión (concurrencia optimista) o en la clave de idempotencia:
+        - `CONCURRENT_MODIFICATION`: el puesto fue modificado por otra operación concurrente (`expectedLockVersion` desactualizado).
+        - `IDEMPOTENCY_KEY_REUSED`: la clave de idempotencia fue reutilizada con una petición diferente.
+        - `IDEMPOTENCY_KEY_EXPIRED`: la clave de idempotencia ha expirado.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+        Idempotency-Replayed:
+          $ref: "#/components/headers/Idempotency-Replayed"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            concurrentModification:
+              summary: Conflicto de concurrencia optimista
+              value:
+                type: "/problems/concurrent-modification"
+                title: "Conflicto de concurrencia"
+                status: 409
+                detail: "El recurso fue modificado por otra operación concurrente."
+                code: "CONCURRENT_MODIFICATION"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyReused:
+              summary: Clave de idempotencia reutilizada
+              value:
+                type: "/problems/idempotency-key-reused"
+                title: "Clave de idempotencia reutilizada"
+                status: 409
+                detail: "La clave de idempotencia ya fue utilizada con una petición diferente."
+                code: "IDEMPOTENCY_KEY_REUSED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyExpired:
+              summary: Clave de idempotencia expirada
+              value:
+                type: "/problems/idempotency-key-expired"
+                title: "Clave de idempotencia expirada"
+                status: 409
+                detail: "La clave de idempotencia ha expirado."
+                code: "IDEMPOTENCY_KEY_EXPIRED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    OrganizationConflict:
+      description: |
+        `409` — Conflicto de versión (concurrencia optimista) o en la clave de idempotencia:
+        - `CONCURRENT_MODIFICATION`: la organización o sede fue modificada por otra operación concurrente (`expectedLockVersion` desactualizado).
+        - `IDEMPOTENCY_KEY_REUSED`: la clave de idempotencia fue reutilizada con una petición diferente.
+        - `IDEMPOTENCY_KEY_EXPIRED`: la clave de idempotencia ha expirado.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+        Idempotency-Replayed:
+          $ref: "#/components/headers/Idempotency-Replayed"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            concurrentModification:
+              summary: Conflicto de concurrencia optimista
+              value:
+                type: "/problems/concurrent-modification"
+                title: "Conflicto de concurrencia"
+                status: 409
+                detail: "El recurso fue modificado por otra operación concurrente."
+                code: "CONCURRENT_MODIFICATION"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyReused:
+              summary: Clave de idempotencia reutilizada
+              value:
+                type: "/problems/idempotency-key-reused"
+                title: "Clave de idempotencia reutilizada"
+                status: 409
+                detail: "La clave de idempotencia ya fue utilizada con una petición diferente."
+                code: "IDEMPOTENCY_KEY_REUSED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyExpired:
+              summary: Clave de idempotencia expirada
+              value:
+                type: "/problems/idempotency-key-expired"
+                title: "Clave de idempotencia expirada"
+                status: 409
+                detail: "La clave de idempotencia ha expirado."
+                code: "IDEMPOTENCY_KEY_EXPIRED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
 
     RateLimited:
       description: |
@@ -1353,3 +4013,913 @@ components:
             code: "SERVICE_UNAVAILABLE"
             requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
             errors: []
+
+    # -- Variantes I2.1 sin cabecera X-Request-ID (PositionController y OrganizationConfigurationController) --
+
+    I21ValidationFailed:
+      description: |
+        `400 VALIDATION_FAILED` — Formato, parámetro, cabecera o estructura inválidos.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/validation-failed"
+            title: "Error de validación"
+            status: 400
+            detail: "La petición contiene campos inválidos."
+            code: "VALIDATION_FAILED"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors:
+              - field: "organization.code"
+                code: "REQUIRED"
+                message: "El código de organización es obligatorio."
+
+    I21SessionRequired:
+      description: |
+        `401 SESSION_REQUIRED` — No existe sesión activa o la sesión venció.
+        El cliente debe redirigir al inicio de sesión.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/session-required"
+            title: "Sesión requerida"
+            status: 401
+            detail: "No existe sesión activa. Inicia sesión para continuar."
+            code: "SESSION_REQUIRED"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []
+
+    I21AccessDeniedOrCsrf:
+      description: |
+        `403` — Una de dos causas; distinguir por `code`:
+        - `ACCESS_DENIED`: acción no permitida para el rol o estado actual.
+        - `CSRF_INVALID`: cabecera `X-CSRF-TOKEN` ausente o inválida.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            accessDenied:
+              summary: Acción no permitida
+              value:
+                type: "/problems/access-denied"
+                title: "Acceso denegado"
+                status: 403
+                detail: "No tienes permiso para realizar esta acción."
+                code: "ACCESS_DENIED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            csrfInvalid:
+              summary: CSRF inválido
+              value:
+                type: "/problems/csrf-invalid"
+                title: "Protección CSRF inválida"
+                status: 403
+                detail: "El token CSRF está ausente o ha vencido."
+                code: "CSRF_INVALID"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    I21ServiceUnavailable:
+      description: "`503` — El servicio está temporalmente no disponible."
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/service-unavailable"
+            title: "Servicio no disponible"
+            status: 503
+            detail: "El servicio no está disponible temporalmente. Inténtalo más tarde."
+            code: "SERVICE_UNAVAILABLE"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []
+
+    # -- Variantes I2.2 sin cabecera X-Request-ID (EmployeeController) ----------
+
+    I22ValidationFailed:
+      description: |
+        `400 VALIDATION_FAILED` — Formato, parámetro, cabecera o estructura inválidos.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/validation-failed"
+            title: "Error de validación"
+            status: 400
+            detail: "La petición contiene campos inválidos."
+            code: "VALIDATION_FAILED"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors:
+              - field: "code"
+                code: "REQUIRED"
+                message: "El código de colaborador es obligatorio."
+
+    I22SessionRequired:
+      description: |
+        `401 SESSION_REQUIRED` — No existe sesión activa o la sesión venció.
+        El cliente debe redirigir al inicio de sesión.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/session-required"
+            title: "Sesión requerida"
+            status: 401
+            detail: "Para acceder a este recurso debe iniciar sesión."
+            code: "SESSION_REQUIRED"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []
+
+    I22AccessDeniedOrCsrf:
+      description: |
+        `403` — Una de dos causas; distinguir por `code`:
+        - `ACCESS_DENIED`: acción no permitida para el rol o estado actual.
+        - `CSRF_INVALID`: cabecera `X-CSRF-TOKEN` ausente o inválida.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            accessDenied:
+              summary: Acción no permitida
+              value:
+                type: "/problems/access-denied"
+                title: "Acceso denegado"
+                status: 403
+                detail: "No tienes permiso para realizar esta acción."
+                code: "ACCESS_DENIED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            csrfInvalid:
+              summary: CSRF inválido
+              value:
+                type: "/problems/csrf-invalid"
+                title: "Protección CSRF inválida"
+                status: 403
+                detail: "El token CSRF está ausente o ha vencido."
+                code: "CSRF_INVALID"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    I22ServiceUnavailable:
+      description: "`503` — El servicio está temporalmente no disponible."
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/service-unavailable"
+            title: "Servicio no disponible"
+            status: 503
+            detail: "El servicio no está disponible temporalmente. Intente más tarde."
+            code: "SERVICE_UNAVAILABLE"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []
+
+    EmployeeNotFound:
+      description: |
+        `404 EMPLOYEE_NOT_FOUND` — El colaborador solicitado no existe o no pertenece a la organización.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/employee-not-found"
+            title: "Colaborador no encontrado"
+            status: 404
+            detail: "El colaborador solicitado no existe o no pertenece a la organización."
+            code: "EMPLOYEE_NOT_FOUND"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []
+
+    EmployeeCreationConflict:
+      description: |
+        `409` — Conflicto durante el registro del colaborador o en la clave de idempotencia:
+        - `EMPLOYEE_CODE_ALREADY_EXISTS`: el código de colaborador ya existe en la organización.
+        - `POSITION_INACTIVE`: el puesto asignado se encuentra inactivo.
+        - `NO_ACTIVE_SITE`: la organización no cuenta con una sede activa.
+        - `EMPLOYEE_LICENSE_LIMIT_REACHED`: se ha alcanzado el límite de colaboradores activos contratados.
+        - `IDEMPOTENCY_KEY_REUSED`: la clave de idempotencia fue reutilizada con una petición diferente.
+        - `IDEMPOTENCY_KEY_EXPIRED`: la clave de idempotencia ha expirado.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+        Idempotency-Replayed:
+          $ref: "#/components/headers/Idempotency-Replayed"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            employeeCodeAlreadyExists:
+              summary: Código de colaborador duplicado
+              value:
+                type: "/problems/employee-code-already-exists"
+                title: "Código de colaborador duplicado"
+                status: 409
+                detail: "El código de colaborador ya existe en la organización."
+                code: "EMPLOYEE_CODE_ALREADY_EXISTS"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            positionInactive:
+              summary: Puesto inactivo
+              value:
+                type: "/problems/position-inactive"
+                title: "Puesto inactivo"
+                status: 409
+                detail: "El puesto especificado se encuentra inactivo."
+                code: "POSITION_INACTIVE"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            noActiveSite:
+              summary: Sin sede activa
+              value:
+                type: "/problems/no-active-site"
+                title: "Sin sede activa"
+                status: 409
+                detail: "La organización no cuenta con una sede activa."
+                code: "NO_ACTIVE_SITE"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            licenseLimitReached:
+              summary: Límite de empleados alcanzado
+              value:
+                type: "/problems/employee-license-limit-reached"
+                title: "Límite de empleados alcanzado"
+                status: 409
+                detail: "Se ha alcanzado el límite de empleados activos contratados para la organización."
+                code: "EMPLOYEE_LICENSE_LIMIT_REACHED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyReused:
+              summary: Clave de idempotencia reutilizada
+              value:
+                type: "/problems/idempotency-key-reused"
+                title: "Clave de idempotencia reutilizada"
+                status: 409
+                detail: "La clave de idempotencia ya fue utilizada con una petición diferente."
+                code: "IDEMPOTENCY_KEY_REUSED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyExpired:
+              summary: Clave de idempotencia expirada
+              value:
+                type: "/problems/idempotency-key-expired"
+                title: "Clave de idempotencia expirada"
+                status: 409
+                detail: "La clave de idempotencia ha expirado."
+                code: "IDEMPOTENCY_KEY_EXPIRED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    EmployeeMutationConflict:
+      description: |
+        `409` — Conflicto de versión (concurrencia optimista), puesto inactivo o en la clave de idempotencia:
+        - `CONCURRENT_MODIFICATION`: el colaborador fue modificado por otra operación concurrente (`expectedLockVersion` desactualizado).
+        - `POSITION_INACTIVE`: el nuevo puesto asignado se encuentra inactivo.
+        - `IDEMPOTENCY_KEY_REUSED`: la clave de idempotencia fue reutilizada con una petición diferente.
+        - `IDEMPOTENCY_KEY_EXPIRED`: la clave de idempotencia ha expirado.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+        Idempotency-Replayed:
+          $ref: "#/components/headers/Idempotency-Replayed"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            concurrentModification:
+              summary: Conflicto de concurrencia optimista
+              value:
+                type: "/problems/concurrent-modification"
+                title: "Conflicto de concurrencia"
+                status: 409
+                detail: "El recurso fue modificado por otra operación concurrente."
+                code: "CONCURRENT_MODIFICATION"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            positionInactive:
+              summary: Puesto inactivo
+              value:
+                type: "/problems/position-inactive"
+                title: "Puesto inactivo"
+                status: 409
+                detail: "El puesto especificado se encuentra inactivo."
+                code: "POSITION_INACTIVE"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyReused:
+              summary: Clave de idempotencia reutilizada
+              value:
+                type: "/problems/idempotency-key-reused"
+                title: "Clave de idempotencia reutilizada"
+                status: 409
+                detail: "La clave de idempotencia ya fue utilizada con una petición diferente."
+                code: "IDEMPOTENCY_KEY_REUSED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyExpired:
+              summary: Clave de idempotencia expirada
+              value:
+                type: "/problems/idempotency-key-expired"
+                title: "Clave de idempotencia expirada"
+                status: 409
+                detail: "La clave de idempotencia ha expirado."
+                code: "IDEMPOTENCY_KEY_EXPIRED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    EmployeeActivateConflict:
+      description: |
+        `409` — Conflicto de versión (concurrencia optimista), límite de licencia alcanzado o en la clave de idempotencia:
+        - `CONCURRENT_MODIFICATION`: el colaborador fue modificado por otra operación concurrente (`expectedLockVersion` desactualizado).
+        - `EMPLOYEE_LICENSE_LIMIT_REACHED`: se ha alcanzado el límite de colaboradores activos contratados para la organización.
+        - `IDEMPOTENCY_KEY_REUSED`: la clave de idempotencia fue reutilizada con una petición diferente.
+        - `IDEMPOTENCY_KEY_EXPIRED`: la clave de idempotencia ha expirado.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+        Idempotency-Replayed:
+          $ref: "#/components/headers/Idempotency-Replayed"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            concurrentModification:
+              summary: Conflicto de concurrencia optimista
+              value:
+                type: "/problems/concurrent-modification"
+                title: "Conflicto de concurrencia"
+                status: 409
+                detail: "El recurso fue modificado por otra operación concurrente."
+                code: "CONCURRENT_MODIFICATION"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            licenseLimitReached:
+              summary: Límite de empleados alcanzado
+              value:
+                type: "/problems/employee-license-limit-reached"
+                title: "Límite de empleados alcanzado"
+                status: 409
+                detail: "Se ha alcanzado el límite de empleados activos contratados para la organización."
+                code: "EMPLOYEE_LICENSE_LIMIT_REACHED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyReused:
+              summary: Clave de idempotencia reutilizada
+              value:
+                type: "/problems/idempotency-key-reused"
+                title: "Clave de idempotencia reutilizada"
+                status: 409
+                detail: "La clave de idempotencia ya fue utilizada con una petición diferente."
+                code: "IDEMPOTENCY_KEY_REUSED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyExpired:
+              summary: Clave de idempotencia expirada
+              value:
+                type: "/problems/idempotency-key-expired"
+                title: "Clave de idempotencia expirada"
+                status: 409
+                detail: "La clave de idempotencia ha expirado."
+                code: "IDEMPOTENCY_KEY_EXPIRED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    EmployeeDeactivateConflict:
+      description: |
+        `409` — Conflicto de versión (concurrencia optimista) o en la clave de idempotencia:
+        - `CONCURRENT_MODIFICATION`: el colaborador fue modificado por otra operación concurrente (`expectedLockVersion` desactualizado).
+        - `IDEMPOTENCY_KEY_REUSED`: la clave de idempotencia fue reutilizada con una petición diferente.
+        - `IDEMPOTENCY_KEY_EXPIRED`: la clave de idempotencia ha expirado.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+        Idempotency-Replayed:
+          $ref: "#/components/headers/Idempotency-Replayed"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            concurrentModification:
+              summary: Conflicto de concurrencia optimista
+              value:
+                type: "/problems/concurrent-modification"
+                title: "Conflicto de concurrencia"
+                status: 409
+                detail: "El recurso fue modificado por otra operación concurrente."
+                code: "CONCURRENT_MODIFICATION"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyReused:
+              summary: Clave de idempotencia reutilizada
+              value:
+                type: "/problems/idempotency-key-reused"
+                title: "Clave de idempotencia reutilizada"
+                status: 409
+                detail: "La clave de idempotencia ya fue utilizada con una petición diferente."
+                code: "IDEMPOTENCY_KEY_REUSED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyExpired:
+              summary: Clave de idempotencia expirada
+              value:
+                type: "/problems/idempotency-key-expired"
+                title: "Clave de idempotencia expirada"
+                status: 409
+                detail: "La clave de idempotencia ha expirado."
+                code: "IDEMPOTENCY_KEY_EXPIRED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    # -- Respuestas I2.3 (PolicyController) -----------------------------------
+
+    I23ValidationFailed:
+      description: |
+        `400 VALIDATION_FAILED` — Formato de petición inválido, cuerpo vacío o umbrales fuera de rango.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            missingField:
+              summary: Campo obligatorio ausente
+              value:
+                type: "/problems/validation-failed"
+                title: "Error de validación"
+                status: 400
+                detail: "El campo 'expectedCurrentPolicyVersionId' es obligatorio."
+                code: "VALIDATION_FAILED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors:
+                  - field: "expectedCurrentPolicyVersionId"
+                    code: "REQUIRED"
+                    message: "El campo 'expectedCurrentPolicyVersionId' es obligatorio."
+            thresholdOutOfRange:
+              summary: Umbral fuera de rango permitido
+              value:
+                type: "/problems/validation-failed"
+                title: "Error de validación"
+                status: 400
+                detail: "El descanso mínimo debe estar entre 1 y 1440 minutos"
+                code: "VALIDATION_FAILED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    I23PolicyActivateValidationFailed:
+      description: |
+        `400` — Error de validación estructural, motivo ausente o huella inválida:
+        - `VALIDATION_FAILED`: cuerpo JSON inválido, formato incorrecto, o valores fuera de rango.
+        - `REASON_REQUIRED`: el motivo de activación es obligatorio, supera 500 caracteres o contiene únicamente espacios en blanco.
+        - `INVALID_VALIDATION_FINGERPRINT`: la huella de validación es obligatoria, no cumple el patrón `^[0-9a-f]{64}$`, o no coincide con los parámetros esperados.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            validationFailed:
+              summary: Error de validación estructural o de umbrales
+              value:
+                type: "/problems/validation-failed"
+                title: "Error de validación"
+                status: 400
+                detail: "El descanso mínimo debe estar entre 1 y 1440 minutos"
+                code: "VALIDATION_FAILED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            reasonRequired:
+              summary: Motivo de activación obligatorio o inválido
+              value:
+                type: "/problems/validation-failed"
+                title: "Error de validación"
+                status: 400
+                detail: "El motivo de activación es obligatorio"
+                code: "REASON_REQUIRED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            invalidValidationFingerprint:
+              summary: Huella de validación inválida o discrepante
+              value:
+                type: "/problems/validation-failed"
+                title: "Error de validación"
+                status: 400
+                detail: "La huella de validación proporcionada no coincide con la propuesta calculada"
+                code: "INVALID_VALIDATION_FINGERPRINT"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    I23SessionRequired:
+      description: |
+        `401 SESSION_REQUIRED` — No existe sesión activa o la sesión venció.
+        El cliente debe redirigir al inicio de sesión.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/session-required"
+            title: "Sesión requerida"
+            status: 401
+            detail: "No existe sesión activa. Inicia sesión para continuar."
+            code: "SESSION_REQUIRED"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []
+
+    I23AccessDeniedOrCsrf:
+      description: |
+        `403` — Una de dos causas; distinguir por `code`:
+        - `ACCESS_DENIED`: acción no permitida para el rol actual.
+        - `CSRF_INVALID`: cabecera `X-CSRF-TOKEN` ausente o inválida.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            accessDenied:
+              summary: Acción no permitida para el rol
+              value:
+                type: "/problems/access-denied"
+                title: "Acceso denegado"
+                status: 403
+                detail: "No tienes permiso para realizar esta acción."
+                code: "ACCESS_DENIED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            csrfInvalid:
+              summary: Token CSRF inválido o ausente
+              value:
+                type: "/problems/csrf-invalid"
+                title: "Protección CSRF inválida"
+                status: 403
+                detail: "El token CSRF está ausente o ha vencido."
+                code: "CSRF_INVALID"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    I23PolicyConcurrentModification:
+      description: |
+        `409 POLICY_CONCURRENT_MODIFICATION` — La versión actual de política de la organización
+        no coincide con `expectedCurrentPolicyVersionId`.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/policy-concurrent-modification"
+            title: "Conflicto de concurrencia de política"
+            status: 409
+            detail: "La política actual cambió mientras se preparaba la previsualización."
+            code: "POLICY_CONCURRENT_MODIFICATION"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []
+
+    I23PolicyActivateConflict:
+      description: |
+        `409` — Conflicto de versión de política o en la clave de idempotencia:
+        - `POLICY_CONCURRENT_MODIFICATION`: la versión de política actual ya no coincide con `expectedCurrentPolicyVersionId`.
+        - `IDEMPOTENCY_KEY_REUSED`: la clave de idempotencia ya fue utilizada con una petición diferente.
+        - `IDEMPOTENCY_KEY_EXPIRED`: la clave de idempotencia ha expirado.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            policyConcurrentModification:
+              summary: Conflicto de versión actual de política
+              value:
+                type: "/problems/policy-concurrent-modification"
+                title: "Conflicto de concurrencia de política"
+                status: 409
+                detail: "La política actual cambió mientras se preparaba la previsualización."
+                code: "POLICY_CONCURRENT_MODIFICATION"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyReused:
+              summary: Clave de idempotencia reutilizada
+              value:
+                type: "/problems/idempotency-key-reused"
+                title: "Clave de idempotencia reutilizada"
+                status: 409
+                detail: "La clave de idempotencia ya fue utilizada con una petición diferente."
+                code: "IDEMPOTENCY_KEY_REUSED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyExpired:
+              summary: Clave de idempotencia expirada
+              value:
+                type: "/problems/idempotency-key-expired"
+                title: "Clave de idempotencia expirada"
+                status: 409
+                detail: "La clave de idempotencia ha expirado."
+                code: "IDEMPOTENCY_KEY_EXPIRED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    I23PolicyServiceUnavailableOrBusy:
+      description: |
+        `503` — Recurso ocupado por operación concurrente o servicio no disponible:
+        - `POLICY_OPERATION_BUSY`: el bloqueo de políticas de la organización está retenido por otra operación activa. Incluye cabecera `Retry-After: 1`.
+        - `SERVICE_UNAVAILABLE`: fallo temporal de acceso a datos o base de datos no disponible.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+        Retry-After:
+          $ref: "#/components/headers/Retry-After"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            policyOperationBusy:
+              summary: Bloqueo de política ocupado por concurrencia
+              value:
+                type: "/problems/policy-operation-busy"
+                title: "Operación de política ocupada"
+                status: 503
+                detail: "El recurso de políticas de la organización está ocupado por otra operación concurrente. Intente nuevamente más tarde."
+                code: "POLICY_OPERATION_BUSY"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            serviceUnavailable:
+              summary: Servicio temporalmente no disponible
+              value:
+                type: "/problems/service-unavailable"
+                title: "Servicio no disponible"
+                status: 503
+                detail: "El servicio no está disponible temporalmente. Intente más tarde."
+                code: "SERVICE_UNAVAILABLE"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    I23ServiceUnavailable:
+      description: "`503 SERVICE_UNAVAILABLE` — El servicio no está disponible temporalmente."
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/service-unavailable"
+            title: "Servicio no disponible"
+            status: 503
+            detail: "El servicio no está disponible temporalmente. Intente más tarde."
+            code: "SERVICE_UNAVAILABLE"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []
+
+    # -- Respuestas I2.4 (UnavailabilityController) ----------------------------
+
+    UnavailabilityBadRequest:
+      description: |
+        `400` — Error en los datos de la petición:
+        - `VALIDATION_FAILED`: formato JSON inválido, campos temporales ambiguos o mutuamente excluyentes, motivo no reconocido, o identificadores inválidos.
+        - `PAST_INTERVAL_MODIFICATION_PROHIBITED`: el intervalo ya ha iniciado (en modificación o cancelación según RN-013) o se encuentra en un periodo ya finalizado (en registro).
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            validationFailed:
+              summary: Formato o datos temporales inválidos
+              value:
+                type: "/problems/validation-failed"
+                title: "Error de validación"
+                status: 400
+                detail: "Debe especificar o bien el rango de horas UTC ('startsAt' y 'endsAt') o bien día completo ('allDay: true' con 'startDate' y 'endDate'), pero no ambos."
+                code: "VALIDATION_FAILED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            pastIntervalProhibited:
+              summary: Periodo ya iniciado o finalizado prohibido
+              value:
+                type: "/problems/past-interval-modification-prohibited"
+                title: "Modificación de intervalo pasado o iniciado prohibida"
+                status: 400
+                detail: "No se puede registrar, modificar ni cancelar una indisponibilidad en un periodo que ya ha iniciado o finalizado."
+                code: "PAST_INTERVAL_MODIFICATION_PROHIBITED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    UnavailabilityNotFound:
+      description: |
+        `404 UNAVAILABILITY_NOT_FOUND` — La indisponibilidad solicitada no existe o no pertenece a la organización.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          example:
+            type: "/problems/unavailability-not-found"
+            title: "Indisponibilidad no encontrada"
+            status: 404
+            detail: "La indisponibilidad solicitada no existe o no pertenece a la organización."
+            code: "UNAVAILABILITY_NOT_FOUND"
+            requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+            errors: []
+
+    UnavailabilityCreationConflict:
+      description: |
+        `409` — Conflicto en la clave de idempotencia:
+        - `IDEMPOTENCY_KEY_REUSED`: la clave de idempotencia fue reutilizada con una petición diferente.
+        - `IDEMPOTENCY_KEY_EXPIRED`: la clave de idempotencia ha expirado.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+        Idempotency-Replayed:
+          $ref: "#/components/headers/Idempotency-Replayed"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            idempotencyKeyReused:
+              summary: Clave de idempotencia reutilizada
+              value:
+                type: "/problems/idempotency-key-reused"
+                title: "Clave de idempotencia reutilizada"
+                status: 409
+                detail: "La clave de idempotencia ya fue utilizada con una petición diferente."
+                code: "IDEMPOTENCY_KEY_REUSED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyExpired:
+              summary: Clave de idempotencia expirada
+              value:
+                type: "/problems/idempotency-key-expired"
+                title: "Clave de idempotencia expirada"
+                status: 409
+                detail: "La clave de idempotencia ha expirado."
+                code: "IDEMPOTENCY_KEY_EXPIRED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+    UnavailabilityMutationConflict:
+      description: |
+        `409` — Conflicto de versión (concurrencia optimista), estado de cancelación o en la clave de idempotencia:
+        - `CONCURRENT_MODIFICATION`: la indisponibilidad fue modificada concurrentemente o la versión esperada no coincide.
+        - `UNAVAILABILITY_ALREADY_CANCELLED`: la indisponibilidad ya se encuentra cancelada.
+        - `IDEMPOTENCY_KEY_REUSED`: la clave de idempotencia fue reutilizada con una petición diferente.
+        - `IDEMPOTENCY_KEY_EXPIRED`: la clave de idempotencia ha expirado.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            example: "no-store"
+        Idempotency-Replayed:
+          $ref: "#/components/headers/Idempotency-Replayed"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+          examples:
+            concurrentModification:
+              summary: Conflicto de concurrencia optimista
+              value:
+                type: "/problems/concurrent-modification"
+                title: "Conflicto de concurrencia"
+                status: 409
+                detail: "El recurso fue modificado por otra operación concurrente o la versión esperada no coincide."
+                code: "CONCURRENT_MODIFICATION"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            alreadyCancelled:
+              summary: Indisponibilidad ya cancelada
+              value:
+                type: "/problems/unavailability-already-cancelled"
+                title: "Indisponibilidad ya cancelada"
+                status: 409
+                detail: "La indisponibilidad especificada ya se encuentra cancelada."
+                code: "UNAVAILABILITY_ALREADY_CANCELLED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyReused:
+              summary: Clave de idempotencia reutilizada
+              value:
+                type: "/problems/idempotency-key-reused"
+                title: "Clave de idempotencia reutilizada"
+                status: 409
+                detail: "La clave de idempotencia ya fue utilizada con una petición diferente."
+                code: "IDEMPOTENCY_KEY_REUSED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+            idempotencyKeyExpired:
+              summary: Clave de idempotencia expirada
+              value:
+                type: "/problems/idempotency-key-expired"
+                title: "Clave de idempotencia expirada"
+                status: 409
+                detail: "La clave de idempotencia ha expirado."
+                code: "IDEMPOTENCY_KEY_EXPIRED"
+                requestId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                errors: []
+
+

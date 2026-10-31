@@ -1,0 +1,39 @@
+.absence-dialog-backdrop { padding: 16px; }
+.modal-card.absence-dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-width: 620px;
+  max-height: calc(100dvh - 32px);
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.absence-dialog .modal-header { padding: 14px 20px; align-items: center; gap: 12px; }
+.absence-dialog__art { width: 38px; height: 38px; object-fit: contain; border-radius: 10px; background: #f3f3fe; }
+.absence-dialog .modal-header__info { flex: 1; min-width: 0; }
+.absence-dialog .modal-title { font-size: 18px; line-height: 1.3; }
+.absence-dialog__subtitle { margin: 3px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.absence-dialog .modal-form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.absence-dialog .modal-body { padding: 14px 20px; gap: 11px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.absence-dialog .unavail-form-group { gap: 5px; }
+.absence-dialog .unavail-form-label { font-size: 11px; line-height: 1.3; }
+.absence-dialog :is(.unavail-form-select, .unavail-form-input) { width: 100%; min-width: 0; height: 36px; min-height: 36px; padding: 7px 10px; font-size: 12px; border-radius: 9px; box-sizing: border-box; }
+.absence-dialog .unavail-modal-tabs { padding: 3px; border-radius: 9px; }
+.absence-dialog .unavail-modal-tab-btn { padding: 7px 8px; font-size: 11px; min-height: 30px; }
+.absence-dialog .unavail-form-row { gap: 12px; }
+.absence-dialog .unavail-form-row > * { min-width: 0; }
+.absence-dialog .unavail-field-hint { font-size: 10px; line-height: 1.3; }
+.absence-dialog .unavail-form-textarea { min-height: 58px; height: 58px; padding: 8px 10px; font-size: 12px; resize: vertical; }
+.absence-dialog .unavail-char-counter { font-size: 10px; }
+.absence-dialog .unavail-confidential-note-notice { margin-top: 3px; padding: 7px 9px; font-size: 10px; line-height: 1.4; border-radius: 8px; }
+.absence-dialog .modal-footer { padding: 12px 20px; gap: 9px; flex-shrink: 0; }
+.absence-dialog .modal-footer button { height: 36px; min-height: 36px; font-size: 11px; padding: 0 13px; }
+.absence-dialog :is(.unavail-form-select, .unavail-form-input, .unavail-form-textarea):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: none; }
+@media (max-width: 480px) {
+  .absence-dialog-backdrop { padding: 10px; }
+  .modal-card.absence-dialog { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); border-radius: 16px; }
+  .absence-dialog .modal-header, .absence-dialog .modal-body { padding: 12px 14px; }
+  .absence-dialog .modal-title { font-size: 16px; }
+  .absence-dialog .unavail-form-row { grid-template-columns: 1fr; }
+  .absence-dialog .modal-footer { padding: 10px 14px; flex-wrap: wrap; }
+}

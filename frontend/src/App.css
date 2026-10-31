@@ -1,0 +1,38 @@
+/* ==========================================================================
+   TurnoShift — App Root Styles & Loading Screen
+   ========================================================================== */
+
+.app-loading-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--stone-50);
+}
+
+.app-loading-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background-color: var(--white);
+  border: 1px solid var(--stone-200);
+  padding: var(--space-3) var(--space-6);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-sm);
+}
+
+.app-loading-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--stone-200);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+
+.app-loading-text {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--stone-800);
+}

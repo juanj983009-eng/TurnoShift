@@ -59,19 +59,30 @@
         </dependency>
 
         <!--
-            Flyway core — versión 11.14.1 (BOM).
-            La auto-configuración de Spring Boot lo detecta y ejecuta las
-            migraciones de classpath:db/migration/ al arrancar.
+            Spring Boot Flyway Starter — versión administrada por BOM (4.0.0).
+            En Spring Boot 4.0.0, FlywayAutoConfiguration fue extraída de
+            spring-boot-autoconfigure al módulo dedicado spring-boot-flyway.
+            Sin este starter, la auto-configuración NO se registra aunque
+            flyway-core esté en el classpath.
+
+            El starter incluye transitivamente:
+              spring-boot-flyway → FlywayAutoConfiguration (paquete
+                org.springframework.boot.flyway.autoconfigure)
+              flyway-core         → librería Flyway
+
+            Al arrancar Spring Boot detecta flyway-core + DataSource y ejecuta
+            las migraciones de classpath:db/migration/ automáticamente.
             Flyway.clean() deshabilitado en application.properties.
         -->
         <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
 
         <!--
             Módulo Flyway para SQL Server — requerido desde Flyway 10+.
-            Registra el soporte de dialecto T-SQL para el motor de migraciones.
+            Registra el soporte de dialecto T-SQL.
+            NO incluido por spring-boot-starter-flyway; se declara explícitamente.
         -->
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -86,6 +97,45 @@
             <groupId>com.microsoft.sqlserver</groupId>
             <artifactId>mssql-jdbc</artifactId>
             <scope>runtime</scope>
+        </dependency>
+
+        <!--
+            Spring Boot Security Starter — activa Spring Security 7.0.0 (BOM).
+            Incluye transitivamente: spring-security-core, spring-security-web,
+            spring-security-config, spring-security-crypto (cubre Argon2Password4jPasswordEncoder).
+            No activa spring-boot-starter-security-oauth2-* ni JWT.
+            El usuario predeterminado se desactiva explícitamente mediante
+            exclude = {UserDetailsServiceAutoConfiguration.class} en @SpringBootApplication.
+            Versión administrada por el BOM de Spring Boot 4.0.0.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!--
+            Spring Session JDBC Starter — Spring Session 4.0.0 (BOM).
+            Persiste sesiones HTTP en SQL Server mediante JdbcIndexedSessionRepository.
+            El esquema se gestiona exclusivamente por Flyway (V9); no se usa el
+            inicializador automático de Spring Session (spring.session.jdbc.initialize-schema=never).
+            Versión administrada por el BOM de Spring Boot 4.0.0.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-session-jdbc</artifactId>
+        </dependency>
+
+        <!--
+            Password4j 1.8.4 — biblioteca de hashing requerida por
+            Argon2Password4jPasswordEncoder en Spring Security 7.
+            spring-security-crypto (transitivo de spring-boot-starter-security) es
+            la envoltura; no incluye password4j transitivamente.
+            Versión fijada explícitamente (no en BOM de Spring Boot).
+        -->
+        <dependency>
+            <groupId>com.password4j</groupId>
+            <artifactId>password4j</artifactId>
+            <version>1.8.4</version>
         </dependency>
 
         <!-- ============================================================
@@ -141,6 +191,28 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>testcontainers-mssqlserver</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+            Spring Security Test — soporte para @WithMockUser, SecurityMockMvcRequestPostProcessors,
+            csrf() en MockMvc, etc. Scope test. Versión administrada por BOM Spring Boot 4.0.0.
+        -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+            spring-boot-webmvc-test — contiene @AutoConfigureMockMvc en Spring Boot 4.
+            En Spring Boot 4, el paquete cambió a org.springframework.boot.webmvc.test.autoconfigure
+            (ya no está en spring-boot-test-autoconfigure).
+            Versión administrada por el BOM de Spring Boot 4.0.0.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
 

@@ -1,0 +1,120 @@
+/* ==========================================================================
+   TurnoShift — Design Tokens
+   Sistema de diseño unificado: Identidad Ámbar + Acento Complementario Violeta
+   Inspirado en dashboard-violet-reference.png para el tercer avance.
+   ========================================================================== */
+
+:root {
+  /* ── Canvas & Superficies Claras ───────────────────────────────────────── */
+  --canvas:         #eff0f6;
+  --surface:        #ffffff;
+  --surface-subtle: #ededfc;
+
+  /* ── Neutros Refinados (Cool Slate / Stone) ────────────────────────────── */
+  --stone-950: #111827; /* --ink */
+  --stone-800: #1e202c;
+  --stone-600: #6b7280; /* --muted */
+  --stone-400: #9ca3af;
+  --stone-200: #e2e4eb; /* --border-subtle */
+  --stone-100: #ededfc;
+  --stone-50:  #eff0f6; /* --canvas */
+  --white:     #ffffff;
+
+  /* ── Jerarquía Tipográfica de Color ────────────────────────────────────── */
+  --ink:           #111827;
+  --ink-secondary: #1e202c;
+  --muted:         #6b7280;
+  --muted-light:   #9ca3af;
+
+  /* ── Bordes Sutiles ────────────────────────────────────────────────────── */
+  --border-subtle: #e2e4eb;
+  --border-default:#e2e4eb;
+  --border-strong: #cfd3dd;
+
+  /* ── Identidad de Marca y Acciones Primarias (Ámbar Obligatorio) ───────── */
+  --accent:        #5d5fef;
+  --accent-hover:  #4f46e5;
+  --accent-subtle: #ededfc;
+
+  /* ── Acento Complementario Violeta / Lila (Dashboard Reference) ────────── */
+  --violet-900: #3730a3;
+  --violet-700: #4f46e5; /* Texto / énfasis sobre fondos claros */
+  --violet-600: #5d5fef; /* Navegación activa, acentos, foco */
+  --violet-500: #6366f1;
+  --violet-400: #818cf8; /* Progreso, badges, decorativo */
+  --violet-200: #c7c8fa;
+  --violet-100: #ededfc; /* Fondos suaves y contenedores destacados */
+  --violet-50:  #f6f6fe;
+
+  /* ── Colores Semánticos ────────────────────────────────────────────────── */
+  --success:        #5dbb9b;
+  --success-subtle: #e9f7f1;
+  --success-border: #b8e2d3;
+
+  --danger:        #f87171;
+  --danger-hover:  #dc5f5f;
+  --danger-subtle: #fff1f1;
+  --danger-border: #fecaca;
+
+  --warning:        #b45309;
+  --warning-subtle: #fef3c7;
+  --warning-border: #fcd34d;
+
+  --info:        #5d5fef;
+  --info-subtle: #ededfc;
+  --info-border: #c7c8fa;
+
+  /* ── Turnos Semanales (Schedule) ───────────────────────────────────────── */
+  --shift-morning:   #d4a574;
+  --shift-afternoon: #8b9f82;
+  --shift-night:     #6b7b8d;
+  --shift-rest:      #e8e4df;
+
+  /* ── Tipografía (DM Sans en marca/títulos, Inter en interfaz) ──────────── */
+  --font-ui:    'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-brand: 'DM Sans', 'Inter Variable', system-ui, sans-serif;
+
+  --text-xs:   0.6875rem; /* 11px */
+  --text-sm:   0.8125rem; /* 13px */
+  --text-base: 0.9375rem; /* 15px */
+  --text-md:   1.0625rem; /* 17px */
+  --text-lg:   1.375rem;  /* 22px */
+  --text-xl:   1.75rem;   /* 28px */
+  --text-hero: 2.5rem;    /* 40px */
+
+  /* ── Espaciado (4px base) ──────────────────────────────────────────────── */
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ── Radios Suaves y Modernos (Referencia: 16px tarjetas, 10-12px controles) */
+  --radius-xs:   4px;
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   16px;
+  --radius-xl:   20px;
+  --radius-pill: 9999px;
+
+  /* ── Sombras Limpias y Discretas ───────────────────────────────────────── */
+  --shadow-xs:   0 1px 2px rgba(17, 24, 39, 0.04);
+  --shadow-sm:   0 2px 6px rgba(17, 24, 39, 0.04), 0 1px 2px rgba(17, 24, 39, 0.02);
+  --shadow-md:   0 8px 24px -4px rgba(17, 24, 39, 0.06), 0 2px 6px -1px rgba(17, 24, 39, 0.03);
+  --shadow-lg:   0 16px 36px -6px rgba(17, 24, 39, 0.08), 0 4px 12px -2px rgba(17, 24, 39, 0.04);
+  --shadow-modal: 0 20px 48px -8px rgba(17, 24, 39, 0.16), 0 6px 16px rgba(17, 24, 39, 0.06);
+
+  /* ── Anillos de Foco Accesibles (Violeta Complementario) ────────────────── */
+  --focus-ring:       0 0 0 3px rgba(93, 95, 239, 0.24);
+  --focus-ring-amber: 0 0 0 3px rgba(93, 95, 239, 0.24);
+
+  /* ── Transiciones Suaves ───────────────────────────────────────────────── */
+  --ease-default: 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-fast:    120ms ease;
+  --ease-enter:   200ms cubic-bezier(0.16, 1, 0.3, 1);
+}

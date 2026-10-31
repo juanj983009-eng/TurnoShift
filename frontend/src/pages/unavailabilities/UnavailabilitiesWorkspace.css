@@ -1,0 +1,75 @@
+.absence-workspace .unavailabilities-header { align-items: center; flex-wrap: nowrap; gap: 14px; }
+.absence-header-art { width: 76px; height: 84px; object-fit: contain; flex-shrink: 0; }
+.absence-workspace .unavailabilities-header__titles { flex: 1; min-width: 0; }
+.absence-workspace .unavailabilities-header__title { font-size: clamp(24px, 2.2vw, 30px); }
+.absence-workspace .unavailabilities-header__eyebrow { display: none; }
+.absence-permissions { margin: 4px 0 0; font-size: 10px; color: var(--muted); line-height: 1.4; }
+.absence-workspace .unavailabilities-header__actions { gap: 8px; flex-shrink: 0; }
+.absence-workspace .unavailabilities-btn-secondary, .absence-workspace .unavailabilities-btn-primary { font-size: 11px; height: 36px; min-height: 36px; padding: 0 12px; gap: 6px; }
+.absence-workspace__columns { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 16px; align-items: start; }
+.absence-register { min-width: 0; background: white; border: 1px solid var(--border-subtle); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow-sm); }
+.absence-workspace .unavailabilities-window-bar { padding: 14px; gap: 10px; border: 0; border-bottom: 1px solid var(--border-subtle); border-radius: 0; box-shadow: none; }
+.absence-workspace .unavailabilities-window-label { font-size: 9px; letter-spacing: .02em; }
+.absence-workspace .unavailabilities-window-range { font-size: 11px; }
+.absence-workspace .unavailabilities-window-icon { width: 30px; height: 30px; }
+.absence-workspace .unavailabilities-presets { gap: 2px; padding: 3px; }
+.absence-workspace .unavailabilities-preset-btn { padding: 6px 9px; font-size: 10px; white-space: nowrap; }
+.absence-workspace .unavailabilities-toolbar { padding: 12px; gap: 10px; border: 0; border-bottom: 1px solid var(--border-subtle); border-radius: 0; box-shadow: none; }
+.absence-workspace .unavailabilities-toolbar__controls { gap: 8px; flex: 1; min-width: 0; flex-wrap: wrap; }
+.absence-workspace .unavailabilities-toggle-cancelled { gap: 6px; font-size: 10px; white-space: nowrap; }
+.absence-workspace .unavailabilities-select-wrapper { min-width: 0; }
+.absence-workspace .unavailabilities-select { max-width: 174px; min-width: 0; width: 100%; padding: 8px 24px 8px 9px; font-size: 10px; }
+.absence-workspace .unavailabilities-toolbar__search { min-width: 170px; flex: 0 1 215px; max-width: none; }
+.absence-workspace .unavailabilities-search-input { min-height: 34px; padding: 8px 28px 8px 32px; font-size: 10px; }
+.absence-workspace .unavailabilities-search-icon { left: 10px; width: 14px; height: 14px; }
+.absence-register .unavailabilities-empty-card { padding: 18px; gap: 8px; min-height: 180px; border: 0; border-radius: 0; box-shadow: none; }
+.absence-register .unavailabilities-empty-icon { width: 54px; height: 54px; margin: 0; background: #f6f6fe; border-radius: 50%; }
+.absence-register .unavailabilities-empty-icon img { width: 54px; height: 54px; object-fit: contain; }
+.absence-register .unavailabilities-empty-title { margin: 0; font-size: 17px; }
+.absence-register .unavailabilities-empty-text { font-size: 11px; margin: 0; max-width: 430px; line-height: 1.5; }
+.absence-register__footer { padding: 11px 14px; border-top: 1px solid var(--border-subtle); font-size: 10px; color: var(--muted); margin: 0; }
+.absence-register .unavailabilities-table-card { border: 0; border-radius: 0; box-shadow: none; }
+.absence-register .unavailabilities-table th { padding: 11px 10px; font-size: 9px; }
+.absence-register .unavailabilities-table td { padding: 12px 10px; font-size: 11px; }
+.absence-register .unavailabilities-table-footer { font-size: 10px; padding: 11px 14px; }
+.absence-register .unavailabilities-table-wrapper { max-height: max(160px, calc(100dvh - 380px)); overflow: auto; overscroll-behavior: contain; }
+.absence-register .unavailabilities-table thead { position: sticky; top: 0; z-index: 1; }
+.absence-context { padding: 16px; background: white; border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: var(--shadow-sm); }
+.absence-context h2 { font: 700 16px/1.3 var(--font-brand); margin: 0; letter-spacing: -.025em; }
+.absence-context__art { display: block; width: 68px; height: 68px; object-fit: contain; margin: 8px auto; }
+.absence-context dl { display: grid; gap: 6px; margin: 0 0 10px; }
+.absence-context dl > div { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px; background: #f7f7fe; border-radius: 9px; }
+.absence-context dt { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+.absence-context dd { margin: 0; font-weight: 600; font-size: 12px; }
+.absence-dot { width: 7px; height: 7px; border-radius: 50%; background: #9ca3af; }
+.absence-dot--active { background: #5dbb9b; }
+.absence-context__timezone { display: flex; gap: 8px; align-items: center; padding: 10px; border-radius: 9px; background: #ededfc; color: var(--accent-hover); }
+.absence-context__timezone span { font-size: 10px; color: var(--muted); }
+.absence-context__timezone strong { display: block; margin-top: 2px; font-size: 11px; color: var(--ink); overflow-wrap: anywhere; }
+.absence-context__link { display: inline-flex; gap: 8px; align-items: center; margin: 12px 0; font-size: 12px; font-weight: 600; color: var(--accent-hover); text-decoration: none; }
+.absence-context__link:hover { text-decoration: underline; }
+.absence-context__link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.absence-context__privacy { border-top: 1px solid var(--border-subtle); padding-top: 9px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+@media (min-width: 1101px) and (max-height: 760px) {
+  .absence-header-art { width: 66px; height: 70px; }
+  .absence-context { padding: 14px; }
+  .absence-context__art { width: 56px; height: 56px; margin: 6px auto; }
+  .absence-register .unavailabilities-empty-card { padding: 14px; }
+}
+@media (max-width: 1100px) {
+  .absence-workspace__columns { grid-template-columns: minmax(0, 1fr); }
+  .absence-workspace .unavailabilities-header { flex-wrap: wrap; }
+  .absence-context { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .absence-context__art { display: none; }
+  .absence-context dl { grid-column: 2; grid-row: 1 / 4; }
+  .absence-context__link { margin: 0; }
+}
+@media (max-width: 640px) {
+  .absence-workspace .unavailabilities-header__actions { flex-wrap: wrap; }
+  .absence-workspace .unavailabilities-toolbar__search { flex-basis: 100%; }
+  .absence-workspace .unavailabilities-select { max-width: 100%; }
+  .absence-register .unavailabilities-table { min-width: 700px; }
+  .absence-context { display: block; }
+  .absence-context dl { margin: 12px 0; }
+  .absence-context__privacy { margin-top: 12px; }
+}

@@ -1,0 +1,142 @@
+/* ==========================================================================
+   TurnoShift — ForbiddenPage Styles
+   ========================================================================== */
+
+.forbidden-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 120px);
+  padding: var(--space-6);
+}
+
+.forbidden-card {
+  max-width: 480px;
+  width: 100%;
+  background-color: var(--white);
+  border: 1px solid var(--stone-200);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-8);
+  text-align: center;
+  animation: card-enter 200ms ease-out both;
+}
+
+.forbidden-card__icon-wrapper {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background-color: var(--danger-subtle);
+  border: 1px solid var(--danger-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--space-5);
+}
+
+.forbidden-card__icon {
+  color: var(--danger);
+}
+
+.forbidden-card__title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--stone-950);
+  margin-bottom: var(--space-2);
+}
+
+.forbidden-card__message {
+  font-size: var(--text-sm);
+  color: var(--stone-600);
+  line-height: 1.5;
+  margin-bottom: var(--space-6);
+}
+
+.forbidden-card__details {
+  background-color: var(--stone-50);
+  border: 1px solid var(--stone-200);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  text-align: left;
+  margin-bottom: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.forbidden-card__detail-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  gap: var(--space-2);
+}
+
+.forbidden-card__detail-label {
+  color: var(--stone-600);
+  font-weight: 500;
+}
+
+.forbidden-card__detail-value {
+  color: var(--stone-950);
+  font-weight: 600;
+  text-align: right;
+}
+
+.forbidden-card__detail-value--role {
+  color: var(--accent);
+}
+
+.forbidden-card__actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: center;
+}
+
+.forbidden-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--ease-fast);
+  text-decoration: none;
+}
+
+.forbidden-btn--primary {
+  background-color: var(--accent);
+  color: var(--white);
+  border: 1px solid var(--accent);
+}
+
+.forbidden-btn--primary:hover {
+  background-color: var(--accent-hover);
+}
+
+.forbidden-btn--secondary {
+  background-color: var(--white);
+  color: var(--stone-800);
+  border: 1px solid var(--stone-200);
+}
+
+.forbidden-btn--secondary:hover:not(:disabled) {
+  background-color: var(--stone-100);
+}
+
+.forbidden-btn--secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+  .forbidden-card__actions {
+    flex-direction: column;
+  }
+
+  .forbidden-btn {
+    width: 100%;
+  }
+}

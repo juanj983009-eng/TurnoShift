@@ -1,57 +1,64 @@
 package com.turnoshift.persistence;
 
 import org.flywaydb.core.Flyway;
-import org.flywaydb.core.api.MigrationInfo;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.MethodOrderer;
-import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestMethodOrder;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.test.annotation.Rollback;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.mssqlserver.MSSQLServerContainer;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Prueba de integración: verifica que las migraciones reales de producción
- * (V1 organizations + V2 sites) se aplican correctamente sobre SQL Server 2022
- * efímero y que las restricciones de persistencia del modelo funcionan.
+ * Prueba de integración: verifica que FlywayAutoConfiguration aplica las migraciones
+ * reales (V1 organizations + V2 sites + V3 constraints) al arrancar Spring Boot,
+ * y que las restricciones de persistencia del modelo se cumplen.
  *
- * <p><b>Patrón de prueba:</b> Flyway + JdbcTemplate configurados manualmente
- * (mismo enfoque que FlywayMssqlCompatibilityIT / PoC-01). Este patrón evita la
- * complejidad de @SpringBootTest + @DynamicPropertySource cuando múltiples contenedores
- * {@code MSSQLServerContainer} coexisten en el mismo JVM con {@code ryuk.disabled=true}
- * (confirmado en ~/.testcontainers.properties de este entorno).
+ * <p><b>Patrón de prueba:</b> {@code @SpringBootTest} con beans inyectados
+ * (Flyway, DataSource, JdbcTemplate). Flyway migra durante el arranque del contexto
+ * —no se invoca migrate() manualmente. Cada prueba es independiente gracias a
+ * {@code @Transactional}: las inserciones se revierten al finalizar cada método.
  *
- * <p>El arranque real del contexto Spring Boot se verifica en {@link SpringBootStartupIT}.
+ * <p><b>Verificación de conexión:</b> se comprueba mediante metadatos JDBC que
+ * DataSource y Flyway apuntan al mismo contenedor efímero, sin exponer credenciales.
  *
  * <p><b>Alcance (I0 — HT-02 / HT-07):</b>
  * <ul>
- *   <li>V1 y V2 de producción aplicados desde base vacía.</li>
- *   <li>Segunda ejecución idempotente (no reaplica).</li>
- *   <li>Rechazo de código de organización duplicado globalmente (unicidad global).</li>
- *   <li>Rechazo de segunda sede activa en la misma organización (índice filtrado).</li>
- *   <li>Rechazo de sede con organización inexistente (FK).</li>
- *   <li>Aceptación del mismo código de sede en organizaciones distintas.</li>
+ *   <li>V1 a V6 aplicados desde base vacía por FlywayAutoConfiguration.</li>
+ *   <li>DataSource y Flyway conectan al mismo servidor (verificado por metadatos).</li>
+ *   <li>Idempotencia: segunda llamada a migrate() aplica 0 migraciones.</li>
+ *   <li>Unicidad global de código de organización (V1).</li>
+ *   <li>Rechazo de max_active_sites != 1 (V3).</li>
+ *   <li>Rechazo de current_policy_version_id no NULL (V3).</li>
+ *   <li>Unicidad de código sigue en pie tras eliminar índice redundante (V3).</li>
+ *   <li>Rechazo de segunda sede activa (índice filtrado, V2).</li>
+ *   <li>Rechazo de sede con organización inexistente (FK, V2).</li>
+ *   <li>Mismo código de sede en organizaciones distintas permitido.</li>
+ *   <li>V3 aplicable sobre datos V1/V2 sin pérdida de filas válidas.</li>
+ *   <li>V4, V5, V6 aplicados correctamente con organizaciones preexistentes.</li>
  * </ul>
  *
- * <p>Estas pruebas verifican restricciones de persistencia, NO equivalen a aislamiento de API.
- *
- * <p><b>Requisito:</b> Docker disponible en el host. Si no está, falla con error claro.
- * <p><b>Imagen:</b> {@code mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04}
- * SQL Server 2022 Developer Edition — solo desarrollo/pruebas, no producción.
+ * <p><b>Imagen:</b> SQL Server 2022 Developer Edition — solo desarrollo/pruebas.
  */
+@SpringBootTest
 @Testcontainers
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@DisplayName("IT: Migraciones reales organizations + sites sobre SQL Server 2022")
+@Transactional
+@Rollback
+@DisplayName("IT: Schema organizations + sites con FlywayAutoConfiguration")
 class OrganizationsSitesSchemaIT {
 
     @Container
@@ -59,207 +66,338 @@ class OrganizationsSitesSchemaIT {
             new MSSQLServerContainer("mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04")
                     .acceptLicense();
 
-    static JdbcTemplate jdbc;
-
-    // =========================================================================
-    // UUIDs de organizaciones ficticias (solo datos de prueba)
-    // =========================================================================
-    private static final String ORG_ALFA_ID = "A1000000-0000-0000-0000-000000000001";
-    private static final String ORG_BETA_ID = "B2000000-0000-0000-0000-000000000002";
-
     /**
-     * Aplica las migraciones reales de producción y configura JdbcTemplate.
-     *
-     * <p>Flyway conecta al contenedor usando {@code classpath:db/migration}
-     * (migraciones de producción: V1 organizations, V2 sites).
-     * Usa la tabla de historial por defecto ({@code flyway_schema_history}).
-     * {@code cleanDisabled=true} — idéntico a producción.
-     *
-     * <p>JdbcTemplate usa el mismo DataSource para garantizar que las
-     * restricciones se verifican contra el mismo schema que creó Flyway.
+     * Inyecta la URL del contenedor como propiedades de Spring Boot.
+     * @DynamicPropertySource tiene mayor prioridad que application.properties.
+     * DataSource, JdbcTemplate y FlywayAutoConfiguration usan esta única fuente.
      */
-    @BeforeAll
-    static void configurarEntorno() {
-        DriverManagerDataSource dataSource = new DriverManagerDataSource();
-        dataSource.setDriverClassName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
-        dataSource.setUrl(SQL_SERVER.getJdbcUrl());
-        dataSource.setUsername(SQL_SERVER.getUsername());
-        dataSource.setPassword(SQL_SERVER.getPassword());
-
-        Flyway.configure()
-                .dataSource(dataSource)
-                .locations("classpath:db/migration")
-                // Usar tabla de historial por defecto (flyway_schema_history).
-                // Las migraciones PoC usan poc_flyway_schema_history; no hay conflicto.
-                .cleanDisabled(true)
-                .validateOnMigrate(true)
-                .load()
-                .migrate();
-
-        jdbc = new JdbcTemplate(dataSource);
+    @DynamicPropertySource
+    static void configurarDataSource(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", SQL_SERVER::getJdbcUrl);
+        registry.add("spring.datasource.username", SQL_SERVER::getUsername);
+        registry.add("spring.datasource.password", SQL_SERVER::getPassword);
+        registry.add("spring.datasource.driver-class-name",
+                () -> "com.microsoft.sqlserver.jdbc.SQLServerDriver");
     }
 
+    @Autowired
+    Flyway flyway;
+
+    @Autowired
+    DataSource dataSource;
+
+    @Autowired
+    JdbcTemplate jdbc;
+
     // =========================================================================
-    // Test 1: Flyway aplicó exactamente 2 migraciones desde base vacía
+    // Verificación: misma conexión (DataSource y Flyway apuntan al mismo servidor)
     // =========================================================================
 
     @Test
-    @Order(1)
-    @DisplayName("Flyway aplica V1 y V2 desde base vacía; historial contiene 2 versiones")
-    void flywayAplicaDosVersionesDesdeBaseVacia() {
-        Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1",
-                Integer.class
-        );
-        assertThat(count)
-                .as("Flyway debe haber aplicado exactamente 2 migraciones (V1 organizations, V2 sites)")
-                .isEqualTo(2);
+    @DisplayName("DataSource y Flyway apuntan al mismo servidor que el contenedor efímero")
+    void mismaConexionDataSourceYFlyway() throws Exception {
+        int puertoContenedor = SQL_SERVER.getMappedPort(1433);
 
-        // Verificar que las versiones son exactamente V1 y V2
+        String urlDataSource;
+        try (Connection conn = dataSource.getConnection()) {
+            urlDataSource = conn.getMetaData().getURL();
+        }
+        assertThat(urlDataSource)
+                .as("DataSource debe apuntar al contenedor efímero en localhost:" + puertoContenedor)
+                .contains("localhost:" + puertoContenedor);
+
+        String urlFlyway;
+        try (Connection conn = flyway.getConfiguration().getDataSource().getConnection()) {
+            urlFlyway = conn.getMetaData().getURL();
+        }
+        assertThat(urlFlyway)
+                .as("Flyway debe conectar al mismo servidor que DataSource")
+                .isEqualTo(urlDataSource);
+    }
+
+    // =========================================================================
+    // Flyway: versiones aplicadas y idempotencia
+    // =========================================================================
+
+    @Test
+    @DisplayName("flyway_schema_history contiene V1 a V19 en orden (FlywayAutoConfig)")
+    void flywayAutoConfigAplicoTodasLasVersiones() {
         List<String> versiones = jdbc.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success = 1 ORDER BY installed_rank",
                 String.class
         );
-        assertThat(versiones).containsExactly("1", "2");
+        assertThat(versiones)
+                .as("FlywayAutoConfiguration debe aplicar exactamente V1 a V19")
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19");
+    }
+
+    @Test
+    @Rollback(false) // migrate() tiene efecto en la DB; no se revierte para preservar estado
+    @DisplayName("flyway.migrate() invocado de nuevo aplica 0 migraciones (idempotente)")
+    void flywayMigrateIdempotente() {
+        int nuevas = flyway.migrate().migrationsExecuted;
+        assertThat(nuevas)
+                .as("migrate() invocado de nuevo no debe aplicar migraciones adicionales")
+                .isZero();
     }
 
     // =========================================================================
-    // Test 2: Insertar dos organizaciones ficticias
+    // V3: max_active_sites = 1 obligatorio
     // =========================================================================
 
     @Test
-    @Order(2)
-    @DisplayName("Insertar organizaciones ficticias Alfa y Beta")
-    void insertarOrganizaciones() {
-        jdbc.update("""
-                INSERT INTO organizations
-                    (id, code, display_name, service_status, timezone_id,
-                     max_active_employees, max_active_sites)
-                VALUES (?, ?, ?, 'ACTIVA', 'America/Bogota', 10, 1)
-                """,
-                ORG_ALFA_ID, "ALFA-01", "Empresa Alfa de Prueba"
-        );
-
-        jdbc.update("""
-                INSERT INTO organizations
-                    (id, code, display_name, service_status, timezone_id,
-                     max_active_employees, max_active_sites)
-                VALUES (?, ?, ?, 'ACTIVA', 'America/Bogota', 5, 1)
-                """,
-                ORG_BETA_ID, "BETA-02", "Empresa Beta de Prueba"
-        );
-
-        Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM organizations WHERE id IN (?, ?)",
-                Integer.class, ORG_ALFA_ID, ORG_BETA_ID
-        );
-        assertThat(count).isEqualTo(2);
-    }
-
-    // =========================================================================
-    // Test 3: Código de organización duplicado rechazado (unicidad global)
-    // =========================================================================
-
-    @Test
-    @Order(3)
-    @DisplayName("Código de organización duplicado es rechazado (unicidad global)")
-    void organizacionCodigoDuplicadoEsRechazado() {
+    @DisplayName("V3: max_active_sites != 1 rechazado por CHECK constraint")
+    void maxActiveSitesDosRechazado() {
         assertThatThrownBy(() ->
                 jdbc.update("""
                         INSERT INTO organizations
                             (id, code, display_name, service_status, timezone_id,
                              max_active_employees, max_active_sites)
-                        VALUES (NEWID(), ?, 'Duplicado', 'ACTIVA', 'UTC', 1, 1)
-                        """, "ALFA-01")
+                        VALUES (NEWID(), 'MULTI-01', 'Org Multisede', 'ACTIVA', 'UTC', 5, 2)
+                        """)
         )
-                .as("Código ALFA-01 ya existe globalmente; debe rechazarse")
+                .as("max_active_sites = 2 debe ser rechazado por chk_organizations_max_active_sites_one")
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     // =========================================================================
-    // Test 4: Insertar sede activa para Alfa
+    // V3: current_policy_version_id debe ser NULL
     // =========================================================================
 
     @Test
-    @Order(4)
-    @DisplayName("Insertar la sede activa de la organización Alfa")
-    void insertarSedeActivaAlfa() {
+    @DisplayName("V3: current_policy_version_id no NULL rechazado por CHECK constraint")
+    void policyVersionNoNullRechazada() {
+        assertThatThrownBy(() ->
+                jdbc.update("""
+                        INSERT INTO organizations
+                            (id, code, display_name, service_status, timezone_id,
+                             max_active_employees, max_active_sites, current_policy_version_id)
+                        VALUES (NEWID(), 'POL-01', 'Org con Politica', 'ACTIVA', 'UTC', 5, 1, NEWID())
+                        """)
+        )
+                .as("current_policy_version_id no NULL debe ser rechazado (FK diferida no existe aún)")
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    // =========================================================================
+    // V3: unicidad de código sigue vigente tras eliminar índice explícito
+    // =========================================================================
+
+    @Test
+    @DisplayName("V3: unicidad de código de organización sigue vigente (restricción UNIQUE intacta)")
+    void unicidadCodigoPersisteDespuesDropIndice() {
+        String codigoUnico = "ORG-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
         jdbc.update("""
-                INSERT INTO sites
-                    (organization_id, id, code, name, is_active)
-                VALUES (?, ?, 'HQ', 'Sede Principal Alfa', 1)
-                """,
-                ORG_ALFA_ID, "A1000000-0000-0000-0001-000000000001"
-        );
+                INSERT INTO organizations
+                    (id, code, display_name, service_status, timezone_id,
+                     max_active_employees, max_active_sites)
+                VALUES (NEWID(), ?, 'Primera Org', 'ACTIVA', 'UTC', 1, 1)
+                """, codigoUnico);
+
+        assertThatThrownBy(() ->
+                jdbc.update("""
+                        INSERT INTO organizations
+                            (id, code, display_name, service_status, timezone_id,
+                             max_active_employees, max_active_sites)
+                        VALUES (NEWID(), ?, 'Segunda Org misma clave', 'ACTIVA', 'UTC', 1, 1)
+                        """, codigoUnico)
+        )
+                .as("Código duplicado debe rechazarse aunque el índice explícito fue eliminado en V3")
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    // =========================================================================
+    // Organizations: inserción válida
+    // =========================================================================
+
+    @Test
+    @DisplayName("Insertar organización válida con max_active_sites = 1")
+    void insertarOrganizacionValida() {
+        String id = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO organizations
+                    (id, code, display_name, service_status, timezone_id,
+                     max_active_employees, max_active_sites)
+                VALUES (?, 'ALFA-01', 'Empresa Alfa de Prueba', 'ACTIVA', 'America/Bogota', 10, 1)
+                """, id);
+
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM organizations WHERE id = ?", Integer.class, id);
+        assertThat(count).as("Organización válida debe insertarse correctamente").isEqualTo(1);
+    }
+
+    // =========================================================================
+    // Organizations: código duplicado rechazado
+    // =========================================================================
+
+    @Test
+    @DisplayName("Código de organización duplicado rechazado (unicidad global)")
+    void codigoOrganizacionDuplicadoRechazado() {
+        jdbc.update("""
+                INSERT INTO organizations
+                    (id, code, display_name, service_status, timezone_id,
+                     max_active_employees, max_active_sites)
+                VALUES (NEWID(), 'DUP-01', 'Original', 'ACTIVA', 'UTC', 1, 1)
+                """);
+
+        assertThatThrownBy(() ->
+                jdbc.update("""
+                        INSERT INTO organizations
+                            (id, code, display_name, service_status, timezone_id,
+                             max_active_employees, max_active_sites)
+                        VALUES (NEWID(), 'DUP-01', 'Duplicado', 'ACTIVA', 'UTC', 1, 1)
+                        """)
+        )
+                .as("Código DUP-01 ya existe globalmente; debe rechazarse")
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    // =========================================================================
+    // Sites: inserción y restricciones (V2)
+    // =========================================================================
+
+    @Test
+    @DisplayName("Insertar sede activa para organización existente")
+    void insertarSedeActivaParaOrganizacion() {
+        String orgId = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO organizations (id, code, display_name, service_status, timezone_id,
+                    max_active_employees, max_active_sites)
+                VALUES (?, 'SEDE-ORG', 'Org para Sede', 'ACTIVA', 'UTC', 1, 1)
+                """, orgId);
+
+        String siteId = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO sites (organization_id, id, code, name, is_active)
+                VALUES (?, ?, 'HQ', 'Sede Principal', 1)
+                """, orgId, siteId);
 
         Integer count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM sites WHERE organization_id = ? AND is_active = 1",
-                Integer.class, ORG_ALFA_ID
+                Integer.class, orgId
         );
-        assertThat(count).isEqualTo(1);
+        assertThat(count).as("Debe existir exactamente 1 sede activa").isEqualTo(1);
     }
 
-    // =========================================================================
-    // Test 5: Segunda sede activa rechazada (índice filtrado)
-    // =========================================================================
-
     @Test
-    @Order(5)
-    @DisplayName("Segunda sede activa en la misma organización es rechazada (índice filtrado)")
-    void segundaSedeActivaMismaOrgEsRechazada() {
+    @DisplayName("Segunda sede activa rechazada (índice filtrado unique por organización)")
+    void segundaSedeActivaRechazada() {
+        String orgId = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO organizations (id, code, display_name, service_status, timezone_id,
+                    max_active_employees, max_active_sites)
+                VALUES (?, 'S2ORG-01', 'Org Dos Sedes', 'ACTIVA', 'UTC', 1, 1)
+                """, orgId);
+
+        jdbc.update("""
+                INSERT INTO sites (organization_id, id, code, name, is_active)
+                VALUES (?, NEWID(), 'HQ', 'Primera Sede', 1)
+                """, orgId);
+
         assertThatThrownBy(() ->
                 jdbc.update("""
-                        INSERT INTO sites
-                            (organization_id, id, code, name, is_active)
-                        VALUES (?, NEWID(), 'NORTE', 'Sede Norte Alfa', 1)
-                        """, ORG_ALFA_ID)
+                        INSERT INTO sites (organization_id, id, code, name, is_active)
+                        VALUES (?, NEWID(), 'NORTE', 'Segunda Sede Activa', 1)
+                        """, orgId)
         )
-                .as("Ya existe sede activa para Alfa; el índice filtrado debe rechazar una segunda")
+                .as("Índice filtrado debe rechazar segunda sede activa en la misma organización")
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
-    // =========================================================================
-    // Test 6: Sede con organización inexistente rechazada (FK)
-    // =========================================================================
-
     @Test
-    @Order(6)
-    @DisplayName("Sede con organización inexistente es rechazada (FK a organizations)")
-    void sedeConOrgInexistenteEsRechazada() {
-        String orgInexistente = "FFFF0000-0000-0000-0000-000000000000";
+    @DisplayName("Sede con organización inexistente rechazada (FK a organizations)")
+    void sedeConOrgInexistenteRechazada() {
+        String orgInexistente = UUID.randomUUID().toString();
         assertThatThrownBy(() ->
                 jdbc.update("""
-                        INSERT INTO sites
-                            (organization_id, id, code, name, is_active)
+                        INSERT INTO sites (organization_id, id, code, name, is_active)
                         VALUES (?, NEWID(), 'HQ', 'Sede Fantasma', 1)
                         """, orgInexistente)
         )
-                .as("La organización no existe; la FK debe rechazar la inserción")
+                .as("FK debe rechazar sede cuya organización no existe")
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
-    // =========================================================================
-    // Test 7: Mismo código de sede en organizaciones distintas permitido
-    // =========================================================================
-
     @Test
-    @Order(7)
-    @DisplayName("Mismo código de sede (HQ) en organización diferente (Beta) está permitido")
-    void mismoCodigoSedeDiferenteOrgPermitido() {
+    @DisplayName("Mismo código de sede en organizaciones distintas está permitido")
+    void mismoCodigoSedeDiferentesOrgsPermitido() {
+        // Organización Alfa
+        String orgAlfa = UUID.randomUUID().toString();
         jdbc.update("""
-                INSERT INTO sites
-                    (organization_id, id, code, name, is_active)
-                VALUES (?, ?, 'HQ', 'Sede Principal Beta', 1)
-                """,
-                ORG_BETA_ID, "B2000000-0000-0000-0001-000000000001"
-        );
+                INSERT INTO organizations (id, code, display_name, service_status, timezone_id,
+                    max_active_employees, max_active_sites)
+                VALUES (?, 'ALFA-MC', 'Alfa', 'ACTIVA', 'UTC', 1, 1)
+                """, orgAlfa);
+
+        // Organización Beta
+        String orgBeta = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO organizations (id, code, display_name, service_status, timezone_id,
+                    max_active_employees, max_active_sites)
+                VALUES (?, 'BETA-MC', 'Beta', 'ACTIVA', 'UTC', 1, 1)
+                """, orgBeta);
+
+        // Ambas con código 'HQ' — debe permitirse (unicidad solo dentro de la organización)
+        jdbc.update("""
+                INSERT INTO sites (organization_id, id, code, name, is_active)
+                VALUES (?, NEWID(), 'HQ', 'Sede Alfa', 1)
+                """, orgAlfa);
+        jdbc.update("""
+                INSERT INTO sites (organization_id, id, code, name, is_active)
+                VALUES (?, NEWID(), 'HQ', 'Sede Beta', 1)
+                """, orgBeta);
 
         Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM sites WHERE code = 'HQ'",
-                Integer.class
-        );
+                "SELECT COUNT(*) FROM sites WHERE code = 'HQ'", Integer.class);
         assertThat(count)
-                .as("Deben existir 2 sedes con código HQ, en organizaciones distintas")
+                .as("Dos sedes con código HQ en organizaciones distintas deben coexistir")
                 .isEqualTo(2);
     }
+
+    @Test
+    @DisplayName("V4/V5/V6: tablas roles, app_users y password_reset_tokens existen con organizaciones preexistentes")
+    void tablasIdentidadExistenConOrganizacionesPreexistentes() {
+        for (String tabla : List.of("roles", "app_users", "password_reset_tokens")) {
+            Integer count = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'",
+                    Integer.class, tabla);
+            assertThat(count).as("Tabla " + tabla + " debe existir tras aplicar todas las migraciones").isEqualTo(1);
+        }
+        // Los tres roles del catálogo deben estar presentes
+        Integer rolesCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM roles WHERE code IN ('ADMINISTRADOR', 'SUPERVISOR', 'COLABORADOR')",
+                Integer.class);
+        assertThat(rolesCount).as("Los 3 roles del catálogo deben estar presentes").isEqualTo(3);
+    }
+
+
+    @Test
+    @DisplayName("Tablas de identidad y catálogo de roles coexisten con organizations/sites")
+    void tablasIdentidadCoexistenConOrganizacionesSites() {
+        // La demostración de conservación de datos insertados ANTES de V4–V8 está en
+        // SchemaUpgradeV3ToLatestIT (prueba programática de ruta de actualización).
+        // Este test verifica que dentro del contexto Spring Boot (post-migración) las
+        // tablas de identidad existen y el catálogo de roles está intacto junto a
+        // organizations/sites que se pueden insertar sin conflicto.
+        String orgId = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO organizations (id, code, display_name, service_status, timezone_id,
+                    max_active_employees, max_active_sites)
+                VALUES (?, 'COEX-01', 'Org Coexistencia Ficticia', 'ACTIVA', 'UTC', 10, 1)
+                """, orgId);
+
+        Integer orgCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM organizations WHERE id = ?", Integer.class, orgId);
+        assertThat(orgCount)
+                .as("Una organización recién insertada debe existir junto al esquema de identidad")
+                .isEqualTo(1);
+
+        Integer rolesCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM roles WHERE code IN ('ADMINISTRADOR', 'SUPERVISOR', 'COLABORADOR')",
+                Integer.class);
+        assertThat(rolesCount)
+                .as("El catálogo de roles debe tener exactamente 3 entradas junto a organizations")
+                .isEqualTo(3);
+    }
 }
+

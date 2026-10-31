@@ -1,0 +1,71 @@
+.positions-workspace .positions-header { align-items: center; gap: 18px; }
+.positions-header__art { width: 90px; height: 90px; object-fit: contain; flex-shrink: 0; }
+.positions-workspace .positions-header__titles { flex: 1; min-width: 0; }
+.positions-workspace .positions-header__title { font-size: clamp(24px, 2.3vw, 32px); }
+.positions-overview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+.positions-overview > span { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 30px; background: #ededfc; border: 1px solid #dedffa; color: #4f46b5; font-size: 11px; }
+.positions-overview strong { font-size: 13px; }
+.positions-overview .positions-overview__active { background: #e9f7f1; color: #236c56; border-color: #ccebdd; }
+.positions-overview .positions-overview__inactive { background: #fff1f1; color: #a13b3b; border-color: #fbdcdc; }
+.positions-overview__active::before, .positions-overview__inactive::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.positions-workspace__columns { display: grid; grid-template-columns: minmax(0, 1fr) 230px; align-items: start; gap: 14px; }
+.positions-catalog { min-width: 0; background: white; border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: var(--shadow-sm); overflow: hidden; }
+.positions-workspace .positions-toolbar { border: 0; border-bottom: 1px solid var(--border-subtle); border-radius: 0; box-shadow: none; padding: 14px; }
+.positions-workspace .positions-toolbar__search { flex: 0 1 280px; min-width: 180px; }
+.positions-workspace .positions-table-card { border: 0; border-radius: 0; box-shadow: none; }
+.positions-workspace .positions-table th { padding: 12px; font-size: 10px; }
+.positions-workspace .positions-table td { padding: 12px; height: 58px; font-size: 12px; }
+.positions-workspace .positions-table th:first-child { width: 110px !important; }
+.positions-workspace .positions-table th:nth-child(3) { width: 105px !important; }
+.positions-workspace .positions-table th:last-child { width: 175px !important; }
+.positions-workspace .positions-code-badge { border: 0; background: transparent; color: #687395; padding: 0; font-size: 11px; border-radius: 0; overflow-wrap: anywhere; }
+.positions-name-content { display: flex; align-items: center; gap: 12px; overflow-wrap: anywhere; }
+.positions-row-icon { display: grid; place-items: center; width: 34px; height: 36px; border-radius: 9px; color: var(--accent); background: #f1f1fe; flex-shrink: 0; }
+.positions-workspace .positions-status-badge { font-size: 10px; white-space: nowrap; border-radius: 10px; padding: 5px 8px; }
+.positions-workspace .positions-status-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.positions-workspace .positions-actions-cell { display: table-cell; text-align: right; white-space: nowrap; }
+.positions-workspace .positions-btn-edit { background: #f1f1fe; color: #4f46b5; border-color: transparent; margin-right: 6px; border-radius: 8px; padding: 6px 9px; }
+.positions-workspace .positions-btn-toggle { padding: 6px 9px; border-radius: 8px; }
+.positions-workspace .positions-btn-toggle--activate { color: #236c56; border-color: #92cdb8; background: white; }
+.positions-workspace .positions-btn-toggle--deactivate { color: #ad3e3e; border-color: #f3b5b5; background: white; }
+.positions-catalog__footer { margin: 0; padding: 12px 14px; border-top: 1px solid var(--border-subtle); color: var(--muted); font-size: 11px; }
+.positions-context { padding: 18px; background: white; border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: var(--shadow-sm); min-width: 0; }
+.positions-context__art { width: 52px; height: 52px; object-fit: contain; float: right; margin-left: 8px; }
+.positions-context h2 { margin: 6px 0 10px; font: 700 20px/1.2 var(--font-brand); letter-spacing: -.025em; }
+.positions-context p { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 0; }
+.positions-context dl { clear: both; margin: 16px 0; }
+.positions-context dl > div { display: flex; justify-content: space-between; gap: 10px; padding: 14px 0; border-top: 1px solid var(--border-subtle); }
+.positions-context dl > div:last-child { border-bottom: 1px solid var(--border-subtle); }
+.positions-context dt { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+.positions-context dd { margin: 0; font-size: 17px; font-weight: 600; }
+.positions-context__dot { width: 9px; height: 9px; border-radius: 50%; }
+.positions-context__dot--active { background: #5dbb9b; }
+.positions-context__dot--inactive { background: #f87171; }
+.positions-context__link { display: inline-flex; gap: 9px; align-items: center; color: var(--accent-hover); font-weight: 600; font-size: 12px; text-decoration: none; }
+.positions-context__link:hover { text-decoration: underline; }
+.positions-context__link:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.positions-context .positions-context__note { margin-top: 18px; padding: 12px; border: 1px solid #dedffa; background: #f4f4fe; color: #596184; border-radius: 10px; font-size: 11px; }
+@media (min-width: 981px) and (max-height: 760px) {
+  .positions-header__art { width: 76px; height: 76px; }
+  .positions-overview { margin-top: 6px; }
+  .positions-context { padding: 16px; }
+  .positions-context dl { margin: 12px 0; }
+  .positions-context dl > div { padding: 11px 0; }
+}
+@media (max-width: 1100px) {
+  .positions-workspace__columns { grid-template-columns: minmax(0, 1fr); }
+  .positions-context { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
+  .positions-context__art { display: none; }
+  .positions-context h2, .positions-context p { grid-column: 1; }
+  .positions-context dl { grid-column: 2; grid-row: 1 / 4; margin: 0; }
+  .positions-context .positions-context__note { margin: 0; }
+}
+@media (max-width: 640px) {
+  .positions-header__art { width: 52px; height: 60px; }
+  .positions-workspace .positions-header { gap: 10px; }
+  .positions-workspace .positions-header__action { width: 100%; }
+  .positions-workspace .positions-toolbar__search { flex-basis: 100%; }
+  .positions-workspace .positions-table { min-width: 580px; }
+  .positions-context { display: block; }
+  .positions-context dl { margin: 12px 0; }
+}

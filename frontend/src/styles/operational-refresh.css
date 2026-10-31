@@ -1,0 +1,219 @@
+/* Shared visual treatment for the operational screens and their dialogs. */
+:is(.configuration-page, .positions-page, .employees-page, .unavailabilities-page) {
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+}
+:is(.config-header__title, .positions-header__title, .employees-header__title, .unavailabilities-header__title) {
+  font: 700 clamp(1.35rem, 2vw, 1.8rem)/1.2 var(--font-brand);
+  letter-spacing: -.035em;
+  color: var(--ink);
+}
+:is(.config-header__subtitle, .positions-header__subtitle, .employees-header__subtitle, .unavailabilities-header__subtitle) {
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 75ch;
+}
+:is(.config-header__eyebrow, .positions-header__eyebrow, .employees-header__eyebrow, .unavailabilities-header__eyebrow) {
+  color: var(--accent-hover);
+  font-size: 10px;
+  letter-spacing: .08em;
+}
+:is(.positions-toolbar, .employees-toolbar, .unavailabilities-toolbar, .unavailabilities-window-bar) {
+  padding: 12px 14px;
+  gap: 12px;
+  border-radius: 14px;
+  border-color: var(--border-subtle);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+:is(.positions-table-card, .employees-table-card, .unavailabilities-table-card) {
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+  overflow: hidden;
+}
+:is(.positions-table, .employees-table, .unavailabilities-table) th {
+  background: #f8f9fc;
+  color: #596174;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 12px 16px;
+  letter-spacing: .035em;
+  border-bottom: 1px solid var(--border-subtle);
+}
+:is(.positions-table, .employees-table, .unavailabilities-table) td {
+  font-size: 12px;
+  padding: 12px 16px;
+  border-bottom-color: #f0f1f6;
+}
+:is(.positions-table, .employees-table, .unavailabilities-table) tbody tr:hover {
+  background: #f8f8ff;
+}
+:is(.positions-status-badge--active, .employees-status-badge--active, .unavail-status--active) {
+  color: #236c56;
+  background: #e9f7f1;
+  border-color: #b8e2d3;
+}
+:is(.positions-status-badge--inactive, .employees-status-badge--inactive, .unavail-status--cancelled) {
+  color: #a13b3b;
+  background: #fff1f1;
+  border-color: #fecaca;
+}
+:is(.positions-filter-btn--active, .employees-filter-btn--active, .unavailabilities-preset-btn--active, .unavail-modal-tab-btn--active) {
+  color: var(--accent-hover);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+:is(.positions-search-input, .employees-search-input, .unavailabilities-search-input) {
+  min-height: 36px;
+  border-radius: 9px;
+  background: #f9f9fe;
+  font-size: 12px;
+}
+:is(.positions-toolbar__search, .employees-toolbar__search, .unavailabilities-toolbar__search) {
+  min-width: min(220px, 100%);
+}
+:is(.positions-btn-primary, .employees-btn-primary, .unavailabilities-btn-primary, .config-btn-save) {
+  background: var(--accent);
+  color: white;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  min-height: 36px;
+  font-size: 12px;
+  box-shadow: 0 3px 8px #5d5fef20;
+}
+:is(.positions-btn-primary, .employees-btn-primary, .unavailabilities-btn-primary, .config-btn-save):hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.config-card {
+  padding: 20px;
+  gap: 18px;
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+}
+.config-card__header { padding-bottom: 14px; }
+.config-grid { gap: 18px; }
+.config-field { min-width: 0; }
+.config-field__input { height: 40px; border-radius: 9px; background: #fcfcff; }
+.config-field__input--disabled { background: var(--surface-subtle); color: #596174; }
+.config-field__helper { font-size: 11px; line-height: 1.5; }
+.config-field__footer { margin-top: 8px; }
+.config-upcoming-card {
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 16px 20px;
+  box-shadow: var(--shadow-xs);
+}
+.config-upcoming-card__text { font-size: 12px; max-width: 80ch; }
+.unavailabilities-notice-banner { padding: 10px 14px; font-size: 11px; border-left-width: 3px; }
+.unavailabilities-window-icon { width: 32px; height: 32px; }
+.unavailabilities-window-range { font-size: 12px; }
+:is(.positions-empty-card, .employees-empty-card, .unavailabilities-empty-card) {
+  padding: 28px 20px;
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+/* Portalled dialogs retain a viewport-sized backdrop and an internal scroll area. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  width: auto;
+  height: auto;
+  z-index: 2000;
+  padding: 20px;
+  background: rgb(24 27 48 / 38%);
+  backdrop-filter: blur(3px);
+}
+.modal-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: var(--shadow-modal);
+  max-width: min(520px, calc(100vw - 40px));
+  max-height: calc(100dvh - 40px);
+  min-height: 0;
+  overflow: hidden;
+}
+.modal-header { padding: 18px 22px; background: var(--surface); flex-shrink: 0; }
+.modal-title { font-family: var(--font-brand); font-size: 18px; letter-spacing: -.025em; }
+.modal-body { padding: 18px 22px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.modal-footer { padding: 14px 22px; background: #fafaff; flex-shrink: 0; }
+:is(.modal-btn-primary, .modal-btn-submit) { background: var(--accent); border-radius: 9px; color: white; font-size: 12px; }
+:is(.modal-btn-primary, .modal-btn-submit):hover:not(:disabled) { background: var(--accent-hover); }
+:is(.modal-btn-cancel, .modal-btn-danger) { border-radius: 9px; font-size: 12px; }
+:is(.position-field__input, .employee-field__input, .employee-field__select, .unavail-form-input, .unavail-form-select, .unavail-form-textarea) {
+  border-radius: 9px;
+  border-color: var(--border-default);
+  background: #fcfcff;
+  font-size: 13px;
+}
+:is(.position-field__input, .employee-field__input, .employee-field__select, .unavail-form-input, .unavail-form-select):not([aria-invalid='true']):focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Public account screens use their own quiet frame, without the signed-in navigation. */
+:is(.login-page, .setup-page) {
+  background: var(--canvas);
+  padding: 24px 16px;
+  min-height: 100dvh;
+  height: auto;
+  overflow: auto;
+}
+:is(.login-card, .setup-card) {
+  width: min(100%, 430px);
+  border-radius: 24px;
+  padding: 30px;
+  border-color: var(--border-subtle);
+  box-shadow: 0 12px 40px rgb(38 41 79 / 9%);
+  background: var(--surface);
+}
+:is(.login-card, .setup-card)::before { display: none; }
+:is(.login-logo__glyph, .setup-logo__glyph) {
+  background: var(--surface-subtle);
+  color: var(--accent-hover);
+  border: 1px solid var(--violet-200);
+  border-radius: 12px;
+  box-shadow: none;
+}
+:is(.login-field__input, .setup-field__input) { background: #fafaff; border-color: var(--border-default); border-radius: 9px; }
+:is(.login-submit, .setup-submit):not(.setup-submit--secondary) { background: var(--accent); border-radius: 10px; box-shadow: var(--shadow-xs); }
+:is(.login-submit, .setup-submit):not(.setup-submit--secondary):hover:not(:disabled) { background: var(--accent-hover); }
+:is(.login-subtitle, .setup-subtitle) { font-size: 12px; line-height: 1.6; }
+:is(.login-footer, .setup-footer) { color: var(--muted); font-size: 10px; }
+@media (min-width: 1000px) {
+  .config-grid { grid-template-columns: 1fr 1fr; }
+  .config-grid > .config-field:last-child {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) 1fr;
+    column-gap: 24px;
+    padding: 14px;
+    background: #f8f8fe;
+    border-radius: 12px;
+  }
+  .config-grid > .config-field:last-child .config-field__header { grid-column: 1; }
+  .config-grid > .config-field:last-child .config-field__input { grid-column: 1; }
+  .config-grid > .config-field:last-child .config-field__helper { grid-column: 2; grid-row: 1 / 3; align-self: center; }
+}
+@media (min-width: 769px) and (max-height: 760px) {
+  :is(.configuration-page, .positions-page, .employees-page, .unavailabilities-page) { gap: 12px; }
+  .config-card { padding: 16px 20px; gap: 12px; }
+  .config-upcoming-card { padding: 12px 18px; }
+  .config-field__helper { margin: 3px 0; }
+  .modal-header, .modal-body { padding: 14px 20px; }
+  .modal-footer { padding: 12px 20px; }
+  :is(.login-card, .setup-card) { padding: 24px 30px; }
+  .login-form, .setup-form { gap: 14px; }
+}
+@media (max-width: 640px) {
+  :is(.positions-toolbar__search, .employees-toolbar__search, .unavailabilities-toolbar__search) { width: 100%; min-width: 0; }
+  .config-card { padding: 16px; }
+  .modal-backdrop { padding: 10px; }
+  .modal-card { max-width: min(520px, calc(100vw - 20px)); max-height: calc(100dvh - 20px); border-radius: 16px; }
+  :is(.login-card, .setup-card) { padding: 24px 20px; }
+}
